@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Bottom-nav height + iOS safe-area inset, reserved on mobile scroll areas. */
+  --bottom-nav-h: 64px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-cream-page text-ink font-sans antialiased;
+    min-height: 100dvh;
+  }
+
+  /* Visible focus ring for keyboard users across all interactive elements. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary/60 ring-offset-2 ring-offset-cream-page rounded-lg;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-display text-plum;
+  }
+}
+
+@layer components {
+  .admin-card {
+    @apply rounded-3xl bg-surface shadow-card border border-blush-soft/60;
+  }
+
+  .admin-section-title {
+    @apply flex items-center gap-2 font-display text-plum;
+  }
+
+  /* Empty reserved artwork slot — never shows a broken image or collapses. */
+  .image-slot {
+    @apply relative overflow-hidden bg-blush-soft/70 border border-blush-deep/30 flex items-center justify-center text-rose-soft;
+  }
+
+  .field-label {
+    @apply block text-sm font-semibold text-plum mb-1.5;
+  }
+
+  .field-hint {
+    @apply mt-1 text-xs text-ink-muted;
+  }
+
+  .field-error {
+    @apply mt-1 text-xs font-medium text-danger;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .pb-safe {
+    padding-bottom: calc(var(--bottom-nav-h) + var(--safe-bottom) + 1rem);
+  }
+}
+
+/* ---- Print / Save-as-PDF (Reports) ---------------------------------- */
+@media print {
+  /* Hide chrome; show only the printable report region. */
+  .admin-sidebar,
+  .admin-header,
+  .admin-bottom-nav,
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff !important;
+  }
+
+  .admin-main {
+    padding: 0 !important;
+  }
+
+  .print-area {
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  @page {
+    margin: 16mm;
+  }
+}

@@ -1,0 +1,29 @@
+# Root safety net for the Dreammy monorepo (customer/ = Laravel, admin/ = Next.js).
+# Each app also has its own .gitignore; these rules are belt-and-suspenders.
+
+# Secrets — never commit
+**/.env
+**/.env.*
+!**/.env.example
+**/*.key
+
+# Local tooling / editor
+.claude/
+.idea/
+.vscode/
+.DS_Store
+
+# Dependencies & build output
+**/node_modules/
+**/vendor/
+admin/.next/
+admin/out/
+customer/public/build/
+customer/public/hot
+
+# Local SQLite database (avoid publishing app data)
+customer/database/*.sqlite
+
+# Logs & caches
+**/*.log
+**/.phpunit.result.cache

@@ -1,0 +1,78 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..600&family=Plus+Jakarta+Sans:ital,wght@0,400..700;1,400..600&family=Caveat:wght@500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+[x-cloak] { display: none !important; }
+
+@layer base {
+    html {
+        scroll-behavior: smooth;
+    }
+
+    body {
+        @apply bg-cream-page text-ink antialiased;
+        padding-bottom: calc(env(safe-area-inset-bottom, 0px));
+    }
+
+    h1, h2, h3 {
+        font-family: Fraunces, Georgia, serif;
+    }
+
+    a:focus-visible,
+    button:focus-visible,
+    [role="button"]:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+        @apply outline-none ring-2 ring-primary/50 ring-offset-2 ring-offset-cream-page;
+    }
+}
+
+@layer components {
+    .shell {
+        @apply mx-auto w-full max-w-shell px-4 sm:px-6 lg:px-8;
+    }
+
+    .btn {
+        @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold transition
+               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2
+               disabled:cursor-not-allowed disabled:opacity-50;
+    }
+    .btn-primary {
+        @apply btn text-white shadow-soft;
+        background-image: linear-gradient(120deg, #C43C6E 0%, #E86A9A 100%);
+    }
+    .btn-primary:hover:not(:disabled) {
+        background-image: linear-gradient(120deg, #AE2F5E 0%, #D6558A 100%);
+    }
+    .btn-outline {
+        @apply btn border border-primary/40 bg-white/70 text-primary hover:bg-primary-soft/60;
+    }
+    .btn-ghost {
+        @apply btn bg-white/60 text-plum hover:bg-white;
+    }
+
+    .card {
+        @apply min-w-0 rounded-3xl border border-blush/60 bg-surface shadow-card;
+    }
+
+    .field {
+        @apply w-full rounded-2xl border-blush-deep/70 bg-white text-ink placeholder:text-ink-muted
+               focus:border-primary focus:ring-primary/40;
+    }
+
+    .chip {
+        @apply inline-flex items-center gap-2 rounded-full border border-blush-deep/60 bg-white px-4 py-2
+               text-sm font-medium text-ink-soft transition hover:border-primary/50 hover:text-primary;
+    }
+    .chip-active {
+        @apply border-transparent text-white;
+        background-image: linear-gradient(120deg, #C43C6E 0%, #E86A9A 100%);
+    }
+
+    .image-slot-empty {
+        @apply block w-full overflow-hidden bg-gradient-to-br from-blush-soft via-cream to-lavender-soft;
+    }
+}
