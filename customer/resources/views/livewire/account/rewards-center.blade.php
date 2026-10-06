@@ -83,6 +83,11 @@
                             <div class="flex flex-1 flex-col p-4">
                                 <h3 class="font-display text-base font-semibold text-plum">{{ $reward->name }}</h3>
                                 <p class="mt-1 line-clamp-2 text-sm text-ink-soft">{{ $reward->description }}</p>
+                                @if ($reward->service)
+                                    <p class="mt-2 inline-flex items-center gap-1 self-start rounded-full bg-blush px-2.5 py-1 text-xs font-semibold text-primary">
+                                        <x-icon name="gift" class="h-3.5 w-3.5" /> Free service: {{ $reward->service->name }}
+                                    </p>
+                                @endif
                                 <div class="mt-3 flex items-center gap-1.5 text-sm font-semibold text-plum">
                                     <x-icon name="star" :filled="true" class="h-4 w-4 text-gold-deep" /> {{ number_format($reward->points_cost) }} points
                                 </div>

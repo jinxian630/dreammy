@@ -7,6 +7,7 @@ import type {
   Service,
   ServiceInput,
   ServiceStatus,
+  StaffOption,
   CurrencyCode,
   FulfillmentStatus,
   Voucher,
@@ -39,14 +40,20 @@ export interface AdminApi {
   getVoucher(id: string): Promise<VoucherWithStatus | null>;
   createVoucher(input: VoucherInput): Promise<VoucherWithStatus>;
   updateVoucher(id: string, input: VoucherInput): Promise<VoucherWithStatus>;
+  deleteVoucher(id: string): Promise<void>;
 
   // Guardians ---------------------------------------------------------------
   listGuardians(): Promise<Guardian[]>;
+
+  // Staff (internal team members, for order assignment) ---------------------
+  listStaff(): Promise<StaffOption[]>;
 
   // Orders ------------------------------------------------------------------
   listOrders(query?: OrderQuery): Promise<Paginated<Order>>;
   getOrder(id: string): Promise<Order | null>;
   assignGuardian(orderId: string, guardianId: string): Promise<Order>;
+  /** Assign (staffId) or clear (null) the internal team member for an order. */
+  assignStaff(orderId: string, staffId: string | null): Promise<Order>;
   updateFulfillment(orderId: string, status: FulfillmentStatus): Promise<Order>;
   completeOrder(orderId: string): Promise<Order>;
   cancelOrder(orderId: string): Promise<Order>;

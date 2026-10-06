@@ -15,9 +15,9 @@ export interface ImageUploadProps {
 }
 
 /**
- * Local-preview-only image field. Creates a browser object URL so the admin
- * can see the picture immediately. NOTHING is uploaded to a server in demo
- * mode — the file only exists in the browser until a backend is wired.
+ * Image picker with instant local preview. Reports both a browser object URL
+ * (for preview) and the raw `File` via `onChange`; the parent uploads the file
+ * to Supabase Storage (see `src/lib/upload.ts`) and stores the returned URL.
  */
 export function ImageUpload({
   label,

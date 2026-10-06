@@ -1,9 +1,13 @@
-# Backend integration notes (Laravel API)
+# Backend integration notes
 
-The admin app talks to **one interface**: `AdminApi` (`src/lib/api/AdminApi.ts`). Today it is backed by
-`mockAdapter` (in-memory, `src/lib/api/mockAdapter.ts`). To go live, implement `AdminApi` with `fetch`
-calls to the Laravel API and swap the export in `src/lib/api/index.ts`. **No page or component changes
-are required.**
+The admin app talks to **one interface**: `AdminApi` (`src/lib/api/AdminApi.ts`).
+
+**Live implementation (current):** `httpAdapter` (`src/lib/api/httpAdapter.ts`) forwards each method to
+a Next.js route handler under `src/app/api/admin/**`, which queries the shared **Supabase** Postgres
+DB using the server-only secret key (`src/lib/supabase/server.ts` → `src/lib/api/server/db.ts`). The
+DB schema is owned by the Laravel migrations in `../../customer/database/migrations`; snake_case ↔
+camelCase mapping lives in `src/lib/api/mappers.ts`. The path/method map below documents those route
+handlers (it also mirrors how a standalone Laravel `/api/admin/*` API could implement the same contract).
 
 > Security: an `/admin` route or any frontend role check is **not** security. The Laravel API MUST
 > authenticate the admin (e.g. Sanctum/session) and authorize every endpoint server-side. Never place
@@ -31,9 +35,11 @@ reported separately.
 | `createVoucher(input)` | POST | `/api/admin/vouchers` | |
 | `updateVoucher(id,input)` | PUT | `/api/admin/vouchers/{id}` | |
 | `listGuardians()` | GET | `/api/admin/guardians` | |
-| `listOrders(query)` | GET | `/api/admin/orders` | all filters + pagination |
+| `listStaff()` | GET | `/api/admin/staff` | active team members assignable to orders; any active member may read |
+| `listOrders(query)` | GET | `/api/admin/orders` | all filters + pagination; `assignedStaffId` accepts a user id or `unassigned` |
 | `getOrder(id)` | GET | `/api/admin/orders/{id}` | |
-| `assignGuardian(id,guardianId)` | PATCH | `/api/admin/orders/{id}/guardian` | `{ guardianId }` |
+| `assignGuardian(id,guardianId)` | PATCH | `/api/admin/orders/{id}/guardian` | `{ guardianId }` (external fulfiller, not a team role) |
+| `assignStaff(id,staffId)` | PATCH | `/api/admin/orders/{id}/assignee` | `{ staffId }` (null clears); the `guardian` team role may only self-assign / self-release |
 | `updateFulfillment(id,status)` | PATCH | `/api/admin/orders/{id}/fulfillment` | `{ status }` |
 | `completeOrder(id)` | POST | `/api/admin/orders/{id}/complete` | requires completion screenshot server-side |
 | `cancelOrder(id)` | POST | `/api/admin/orders/{id}/cancel` | |
@@ -45,8 +51,14 @@ reported separately.
 ## Data shapes
 
 The request/response shapes are exactly the TypeScript types in `src/types/` (`Service`, `Voucher`,
-`Order`, `Guardian`, `ReportSummary`, `DashboardMetrics`, `Paginated<T>`, …). Keep the Laravel API
-resources aligned to these and the mock swap is 1:1.
+`Order`, `Guardian`, `StaffOption`, `ReportSummary`, `DashboardMetrics`, `Paginated<T>`, …). Keep the
+Laravel API resources aligned to these and the mock swap is 1:1.
+
+`Order.assignment` (the internal staff responsible for the order) is backed by the
+`assigned_staff_id` / `assigned_staff_email` / `assigned_by_id` / `assigned_by_email` / `assigned_at`
+columns added in `2026_07_02_000009_add_staff_assignment_to_orders.php`; it is `null` when unassigned.
+This is distinct from `guardianId` (the external fulfiller). Each `assignStaff` call also appends an
+order timeline event.
 
 ## Uploads
 

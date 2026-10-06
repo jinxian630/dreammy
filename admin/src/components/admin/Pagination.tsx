@@ -2,6 +2,7 @@
 
 import { cn } from '@/lib/cn';
 import { IconChevronLeft, IconChevronRight } from '@/components/ui/icons';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 export interface PaginationProps {
   page: number;
@@ -20,20 +21,21 @@ export function Pagination({
   onPerPageChange,
   perPageOptions = [10, 20, 50],
 }: PaginationProps) {
+  const { t } = useI18n();
   const totalPages = Math.max(1, Math.ceil(total / perPage));
   const pages = Array.from({ length: totalPages }, (_, i) => i + 1);
 
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-sm text-ink-soft">
-        Showing {total === 0 ? 0 : (page - 1) * perPage + 1}
+        {t('pagination.showing')} {total === 0 ? 0 : (page - 1) * perPage + 1}
         {'–'}
-        {Math.min(page * perPage, total)} of {total}
+        {Math.min(page * perPage, total)} {t('pagination.of')} {total}
       </p>
       <div className="flex items-center gap-2">
         <button
           type="button"
-          aria-label="Previous page"
+          aria-label={t('pagination.prev')}
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
           className="rounded-full border border-blush-deep/40 bg-white p-2 text-ink-soft disabled:opacity-40 hover:enabled:text-primary"
@@ -58,7 +60,7 @@ export function Pagination({
         ))}
         <button
           type="button"
-          aria-label="Next page"
+          aria-label={t('pagination.next')}
           disabled={page >= totalPages}
           onClick={() => onPageChange(page + 1)}
           className="rounded-full border border-blush-deep/40 bg-white p-2 text-ink-soft disabled:opacity-40 hover:enabled:text-primary"
@@ -67,14 +69,14 @@ export function Pagination({
         </button>
         {onPerPageChange && (
           <select
-            aria-label="Rows per page"
+            aria-label={t('pagination.rowsPerPage')}
             value={perPage}
             onChange={(e) => onPerPageChange(Number(e.target.value))}
             className="ml-1 h-9 rounded-full border border-blush-deep/40 bg-white px-3 text-sm text-ink-soft"
           >
             {perPageOptions.map((n) => (
               <option key={n} value={n}>
-                {n} per page
+                {n} {t('pagination.perPage')}
               </option>
             ))}
           </select>

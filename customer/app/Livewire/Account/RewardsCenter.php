@@ -34,7 +34,7 @@ class RewardsCenter extends Component
 
         return view('livewire.account.rewards-center', [
             'points' => $user->star_points,
-            'rewards' => RewardItem::where('is_available', true)->orderBy('sort')->get(),
+            'rewards' => RewardItem::with('service')->where('is_available', true)->orderBy('sort')->get(),
             'history' => $this->showHistory
                 ? $user->pointTransactions()->latest('created_at')->take(15)->get()
                 : collect(),

@@ -1,58 +1,42 @@
-import type { CurrencyCode, IsoDateTime } from './common';
-
-export type VoucherDiscountType = 'fixed' | 'percentage';
+import type { IsoDateTime } from './common';
 
 /**
- * Lifecycle status. `disabled` means the admin turned the active toggle off;
- * `scheduled`/`active`/`expired` are derived from the validity window.
+ * A "voucher" is a **free-service reward**: it grants a specific service for free
+ * and customers redeem it with star points in the customer Rewards Center.
+ * Backed by the shared `reward_items` table (not a discount code).
  */
-export type VoucherStatus = 'active' | 'scheduled' | 'disabled' | 'expired';
+export type VoucherStatus = 'available' | 'unavailable';
 
 export const VOUCHER_STATUS_LABELS: Record<VoucherStatus, string> = {
-  active: 'Active',
-  scheduled: 'Scheduled',
-  disabled: 'Disabled',
-  expired: 'Expired',
+  available: 'Available',
+  unavailable: 'Unavailable',
 };
 
 export interface Voucher {
   id: string;
-  code: string;
-  internalName: string;
-  discountType: VoucherDiscountType;
-  /** Discount amount in minor units when `discountType === 'fixed'`. */
-  valueMinor: number | null;
-  /** Whole-number percent (e.g. 10) when `discountType === 'percentage'`. */
-  percent: number | null;
-  currency: CurrencyCode;
-  minSpendMinor: number;
-  /** Cap on the discount for percentage vouchers (minor units); null = uncapped. */
-  maxDiscountMinor: number | null;
-  /** Service ids this voucher applies to; empty = all services. */
-  eligibleServiceIds: string[];
-  /** Validity window, expressed in Malaysia Time (MYT, UTC+8). */
-  startAt: IsoDateTime;
-  endAt: IsoDateTime;
-  totalLimit: number;
-  perCustomerLimit: number;
-  usedCount: number;
-  /** Admin toggle. When false the derived status is `disabled`. */
-  active: boolean;
+  /** Customer-facing reward name shown in the Rewards Center. */
+  name: string;
+  description: string;
+  /** The service granted for free; null = generic reward. */
+  serviceId: string | null;
+  /** Resolved service name for display (read-only). */
+  serviceName: string | null;
+  /** Star points required to redeem. */
+  pointsCost: number;
+  /** Image key or full URL; falls back to the service image when empty. */
+  imageKey: string | null;
+  /** Whether it currently shows in the customer Rewards Center. */
+  available: boolean;
+  sort: number;
+  createdAt: IsoDateTime;
 }
 
+/** Payload accepted by create/update — server-managed fields omitted. */
 export interface VoucherInput {
-  code: string;
-  internalName: string;
-  discountType: VoucherDiscountType;
-  valueMinor: number | null;
-  percent: number | null;
-  currency: CurrencyCode;
-  minSpendMinor: number;
-  maxDiscountMinor: number | null;
-  eligibleServiceIds: string[];
-  startAt: IsoDateTime;
-  endAt: IsoDateTime;
-  totalLimit: number;
-  perCustomerLimit: number;
-  active: boolean;
+  name: string;
+  description: string;
+  serviceId: string | null;
+  pointsCost: number;
+  imageKey: string | null;
+  available: boolean;
 }

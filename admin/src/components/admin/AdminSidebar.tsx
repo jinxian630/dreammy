@@ -5,10 +5,16 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/cn';
 import { SIDEBAR_NAV, isActive } from './nav';
 import { BrandMark } from './BrandMark';
+import { useCurrentMember } from '@/lib/auth/useCurrentMember';
+import { canViewPath } from '@/lib/auth/roles';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 /** Persistent left sidebar (desktop ≥ lg). Hidden on mobile. */
 export function AdminSidebar() {
   const pathname = usePathname();
+  const { member } = useCurrentMember();
+  const { t } = useI18n();
+  const items = SIDEBAR_NAV.filter((item) => !member || canViewPath(member.role, item.href));
 
   return (
     <aside className="admin-sidebar hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 lg:border-r lg:border-blush-soft bg-cream">
@@ -16,7 +22,7 @@ export function AdminSidebar() {
         <BrandMark />
       </div>
       <nav className="flex-1 space-y-1 px-4" aria-label="Primary">
-        {SIDEBAR_NAV.map((item) => {
+        {items.map((item) => {
           const active = isActive(pathname, item);
           const Icon = item.icon;
           return (
@@ -32,7 +38,7 @@ export function AdminSidebar() {
               )}
             >
               <Icon width={20} height={20} />
-              {item.label}
+              {t(item.labelKey)}
             </Link>
           );
         })}

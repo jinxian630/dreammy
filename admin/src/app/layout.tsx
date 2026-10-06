@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Fraunces, Plus_Jakarta_Sans, Caveat } from 'next/font/google';
 import './globals.css';
+import { I18nProvider } from '@/lib/i18n/I18nProvider';
 
 const display = Fraunces({
   subsets: ['latin'],
@@ -36,7 +37,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${display.variable} ${body.variable} ${script.variable}`}>
-      <body>{children}</body>
+      <body>
+        <I18nProvider>{children}</I18nProvider>
+      </body>
     </html>
   );
 }

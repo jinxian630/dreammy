@@ -13,6 +13,8 @@ import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/admin/States';
 import { TrendChart } from '@/components/admin/charts/TrendChart';
 import { SalesBarChart } from '@/components/admin/charts/SalesBarChart';
+import { useI18n } from '@/lib/i18n/I18nProvider';
+import type { TKey } from '@/lib/i18n/dictionary';
 import {
   IconCoins,
   IconCart,
@@ -27,13 +29,14 @@ import {
   IconFile,
 } from '@/components/ui/icons';
 
-const QUICK_ACTIONS = [
-  { href: '/admin/services/new', icon: IconPlus, title: 'Add service', desc: 'Create a new game service' },
-  { href: '/admin/vouchers', icon: IconTicket, title: 'Create voucher', desc: 'Set up a promotion' },
-  { href: '/admin/orders', icon: IconClipboard, title: 'View orders', desc: 'Manage service orders' },
+const QUICK_ACTIONS: { href: string; icon: typeof IconPlus; titleKey: TKey; descKey: TKey }[] = [
+  { href: '/admin/services/new', icon: IconPlus, titleKey: 'dashboard.addService', descKey: 'dashboard.addServiceDesc' },
+  { href: '/admin/vouchers', icon: IconTicket, titleKey: 'dashboard.createVoucher', descKey: 'dashboard.createVoucherDesc' },
+  { href: '/admin/orders', icon: IconClipboard, titleKey: 'dashboard.viewOrders', descKey: 'dashboard.viewOrdersDesc' },
 ];
 
 export default function DashboardPage() {
+  const { t } = useI18n();
   const [currency, setCurrency] = useState<CurrencyCode>('MYR');
   const [range, setRange] = useState('30d');
   const [salesMetric, setSalesMetric] = useState<'units' | 'revenue'>('units');
@@ -57,22 +60,22 @@ export default function DashboardPage() {
   return (
     <div>
       <PageHeader
-        title="Overview"
-        subtitle="Here's what's happening with your Dreammy services."
+        title={t('dashboard.title')}
+        subtitle={t('dashboard.subtitle')}
         actions={
           <>
             <Select
-              aria-label="Date range"
+              aria-label={t('dashboard.dateRange')}
               value={range}
               onChange={(e) => setRange(e.target.value)}
               className="w-40"
             >
-              <option value="30d">Last 30 days</option>
-              <option value="7d">Last 7 days</option>
-              <option value="90d">Last 90 days</option>
+              <option value="30d">{t('dashboard.range30')}</option>
+              <option value="7d">{t('dashboard.range7')}</option>
+              <option value="90d">{t('dashboard.range90')}</option>
             </Select>
             <Select
-              aria-label="Currency"
+              aria-label={t('dashboard.currency')}
               value={currency}
               onChange={(e) => setCurrency(e.target.value as CurrencyCode)}
               className="w-28"
@@ -93,7 +96,7 @@ export default function DashboardPage() {
             <StatCard
               icon={IconCoins}
               iconTone="blush"
-              label="Total revenue"
+              label={t('dashboard.totalRevenue')}
               value={formatMoney(data.totalRevenueMinor, currency)}
               deltaPercent={data.revenueDelta.percent}
               deltaLabel={data.revenueDelta.periodLabel}
@@ -101,7 +104,7 @@ export default function DashboardPage() {
             <StatCard
               icon={IconCart}
               iconTone="peach"
-              label="Paid orders"
+              label={t('dashboard.paidOrders')}
               value={String(data.paidOrders)}
               deltaPercent={data.paidOrdersDelta.percent}
               deltaLabel={data.paidOrdersDelta.periodLabel}
@@ -109,7 +112,7 @@ export default function DashboardPage() {
             <StatCard
               icon={IconClipboard}
               iconTone="lavender"
-              label="Active orders"
+              label={t('dashboard.activeOrders')}
               value={String(data.activeOrders)}
               deltaPercent={data.activeOrdersDelta.percent}
               deltaLabel={data.activeOrdersDelta.periodLabel}
@@ -117,7 +120,7 @@ export default function DashboardPage() {
             <StatCard
               icon={IconRefresh}
               iconTone="blush"
-              label="Pending refunds"
+              label={t('dashboard.pendingRefunds')}
               value={String(data.pendingRefunds)}
               deltaPercent={data.pendingRefundsDelta.percent}
               deltaLabel={data.pendingRefundsDelta.periodLabel}
@@ -130,8 +133,8 @@ export default function DashboardPage() {
       <Card className="mt-5">
         <CardHeader
           icon={<IconChart width={20} height={20} />}
-          title="Revenue Trend"
-          action={<Badge tone="blush">Revenue ({currency})</Badge>}
+          title={t('dashboard.revenueTrend')}
+          action={<Badge tone="blush">{t('dashboard.revenue')} ({currency})</Badge>}
         />
         <div className="mt-4">
           {loading || !data ? (
@@ -149,16 +152,16 @@ export default function DashboardPage() {
       <Card className="mt-5">
         <CardHeader
           icon={<IconChart width={20} height={20} />}
-          title="Service Sales"
+          title={t('dashboard.serviceSales')}
           action={
             <Select
-              aria-label="Service sales metric"
+              aria-label={t('dashboard.salesMetric')}
               value={salesMetric}
               onChange={(e) => setSalesMetric(e.target.value as 'units' | 'revenue')}
               className="w-36"
             >
-              <option value="units">Units sold</option>
-              <option value="revenue">Revenue</option>
+              <option value="units">{t('dashboard.unitsSold')}</option>
+              <option value="revenue">{t('dashboard.revenue')}</option>
             </Select>
           }
         />
@@ -183,7 +186,7 @@ export default function DashboardPage() {
 
       {/* Quick actions */}
       <Card className="mt-5">
-        <CardHeader icon={<IconLightning width={20} height={20} />} title="Quick Actions" />
+        <CardHeader icon={<IconLightning width={20} height={20} />} title={t('dashboard.quickActions')} />
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
           {QUICK_ACTIONS.map((action) => {
             const Icon = action.icon;
@@ -197,8 +200,8 @@ export default function DashboardPage() {
                   <Icon width={20} height={20} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block font-semibold text-plum">{action.title}</span>
-                  <span className="block text-xs text-ink-soft">{action.desc}</span>
+                  <span className="block font-semibold text-plum">{t(action.titleKey)}</span>
+                  <span className="block text-xs text-ink-soft">{t(action.descKey)}</span>
                 </span>
                 <IconChevronRight width={18} height={18} className="text-ink-muted" />
               </Link>
@@ -211,13 +214,13 @@ export default function DashboardPage() {
       <Card className="mt-5">
         <CardHeader
           icon={<IconFile width={20} height={20} />}
-          title="Recent Orders"
+          title={t('dashboard.recentOrders')}
           action={
             <Link
               href="/admin/orders"
               className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
             >
-              View all orders <IconArrowRight width={16} height={16} />
+              {t('dashboard.viewAllOrders')} <IconArrowRight width={16} height={16} />
             </Link>
           }
         />
@@ -230,12 +233,12 @@ export default function DashboardPage() {
               <table className="hidden w-full text-sm sm:table">
                 <thead>
                   <tr className="text-left text-xs uppercase tracking-wide text-ink-muted">
-                    <th className="pb-3 font-semibold">Order ID</th>
-                    <th className="pb-3 font-semibold">Player</th>
-                    <th className="pb-3 font-semibold">Service</th>
-                    <th className="pb-3 font-semibold">Amount ({currency})</th>
-                    <th className="pb-3 font-semibold">Status</th>
-                    <th className="pb-3 font-semibold text-right">View</th>
+                    <th className="pb-3 font-semibold">{t('dashboard.thOrderId')}</th>
+                    <th className="pb-3 font-semibold">{t('dashboard.thPlayer')}</th>
+                    <th className="pb-3 font-semibold">{t('dashboard.thService')}</th>
+                    <th className="pb-3 font-semibold">{t('dashboard.thAmount')} ({currency})</th>
+                    <th className="pb-3 font-semibold">{t('dashboard.thStatus')}</th>
+                    <th className="pb-3 font-semibold text-right">{t('common.view')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-blush-soft">
@@ -250,7 +253,7 @@ export default function DashboardPage() {
                       </td>
                       <td className="py-3 text-right">
                         <Link href={`/admin/orders/${o.id}`} className="text-sm font-semibold text-primary hover:underline">
-                          View
+                          {t('common.view')}
                         </Link>
                       </td>
                     </tr>

@@ -9,14 +9,16 @@
 
 @php
     $map = config('dreammy.images', []);
-    $path = $src ?? ($key ? ($map[$key] ?? null) : null);
-    $exists = $path && file_exists(public_path($path));
+    // Resolve: explicit src > mapped key > the key itself (admin stores full Storage URLs).
+    $path = $src ?? ($key ? ($map[$key] ?? $key) : null);
+    $isExternal = $path && (str_starts_with($path, 'http://') || str_starts_with($path, 'https://'));
+    $exists = $isExternal || ($path && file_exists(public_path($path)));
     $fit = $cover ? 'object-cover' : 'object-contain';
 @endphp
 
 @if ($exists)
     <img
-        src="{{ asset($path) }}"
+        src="{{ $isExternal ? $path : asset($path) }}"
         alt="{{ $alt }}"
         loading="lazy"
         style="aspect-ratio: {{ $ratio }};"

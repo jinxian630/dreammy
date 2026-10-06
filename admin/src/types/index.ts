@@ -1,6 +1,7 @@
 export * from './common';
 export * from './service';
 export * from './guardian';
+export * from './staff';
 export * from './voucher';
 export * from './order';
 export * from './transaction';

@@ -25,8 +25,11 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { RadioCard, RadioPill } from '@/components/ui/Radio';
 import { ImageUpload } from '@/components/admin/ImageUpload';
+import { uploadImage } from '@/lib/upload';
 import { ImageSlot } from '@/components/admin/ImageSlot';
 import { useToast } from '@/components/ui/Toast';
+import { useI18n } from '@/lib/i18n/I18nProvider';
+import type { TKey } from '@/lib/i18n/dictionary';
 import {
   IconFile,
   IconSettings,
@@ -46,6 +49,7 @@ interface FormState {
   description: string;
   imageKey: string | null;
   imagePreview: string | null;
+  imageFile: File | null;
   server: ServerRegion;
   duration: ServiceDuration;
   options: ServiceOption[];
@@ -64,6 +68,7 @@ function toFormState(service?: Service): FormState {
     description: service?.description ?? '',
     imageKey: service?.imageKey ?? null,
     imagePreview: null,
+    imageFile: null,
     server: service?.server ?? 'global',
     duration: service?.duration ?? '1d',
     options: service?.options ? structuredClone(service.options) : [],
@@ -79,6 +84,7 @@ function toFormState(service?: Service): FormState {
 export function ServiceForm({ service }: { service?: Service }) {
   const router = useRouter();
   const { notify } = useToast();
+  const { t } = useI18n();
   const isEdit = Boolean(service);
   const [form, setForm] = useState<FormState>(() => toFormState(service));
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -92,29 +98,38 @@ export function ServiceForm({ service }: { service?: Service }) {
 
   function validate(): boolean {
     const next: Record<string, string> = {};
-    if (!form.name.trim()) next.name = 'Service name is required.';
-    if (!form.description.trim()) next.description = 'Description is required.';
-    if (!form.priceMajor.trim() || priceMinor <= 0) next.price = 'Enter a price greater than 0.';
-    if (!form.estimatedCompletion.trim()) next.estimatedCompletion = 'Estimated time is required.';
+    if (!form.name.trim()) next.name = t('sf.errNameReq');
+    if (!form.description.trim()) next.description = t('sf.errDescReq');
+    if (!form.priceMajor.trim() || priceMinor <= 0) next.price = t('sf.errPrice');
+    if (!form.estimatedCompletion.trim()) next.estimatedCompletion = t('sf.errEta');
     setErrors(next);
     return Object.keys(next).length === 0;
   }
 
   async function submit(status: 'active' | 'draft') {
     if (!validate()) {
-      notify('Please fix the highlighted fields.', 'error');
+      notify(t('sf.fixFields'), 'error');
       return;
     }
     setSaving(status === 'active' ? 'publish' : 'draft');
+    let imageKey = form.imageKey;
+    try {
+      // Upload a newly chosen file to Supabase Storage; store the public URL.
+      if (form.imageFile) {
+        imageKey = await uploadImage(form.imageFile, 'service-images');
+      }
+    } catch {
+      notify(t('sf.imgUploadFailed'), 'error');
+      setSaving(null);
+      return;
+    }
     const input: ServiceInput = {
       name: form.name.trim(),
       category: form.category,
       description: form.description.trim(),
       priceMinor,
       currency: form.currency,
-      // In demo mode the local object URL is kept as the preview; a real backend
-      // would return a stored path here after upload.
-      imageKey: form.imagePreview ?? form.imageKey,
+      imageKey,
       status,
       server: form.server,
       duration: form.duration,
@@ -129,10 +144,10 @@ export function ServiceForm({ service }: { service?: Service }) {
       } else {
         await api.createService(input);
       }
-      notify(status === 'active' ? 'Service published.' : 'Draft saved.');
+      notify(status === 'active' ? t('sv.servicePublished') : t('sf.draftSaved'));
       router.push('/admin/services');
     } catch {
-      notify('Something went wrong. Please try again.', 'error');
+      notify(t('sf.wentWrong'), 'error');
       setSaving(null);
     }
   }
@@ -156,8 +171,8 @@ export function ServiceForm({ service }: { service?: Service }) {
   return (
     <div>
       <PageHeader
-        title={isEdit ? 'Edit Service' : 'Add New Service'}
-        subtitle="Create a new Sky game service for your Dreammy store."
+        title={isEdit ? t('sf.editTitle') : t('sf.addTitle')}
+        subtitle={t('sf.subtitle')}
       />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -167,18 +182,18 @@ export function ServiceForm({ service }: { service?: Service }) {
           <Card>
             <CardHeader
               icon={<IconFile width={20} height={20} />}
-              title="Basic information"
-              subtitle="Set the basic details of your service."
+              title={t('sf.basicInfo')}
+              subtitle={t('sf.basicInfoSub')}
             />
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Service name" required htmlFor="name" hint="A clear and concise name for your service." error={errors.name}>
-                <Input id="name" value={form.name} invalid={!!errors.name} onChange={(e) => set('name', e.target.value)} placeholder="Daily Candle Run" />
+              <Field label={t('sf.serviceName')} required htmlFor="name" hint={t('sf.serviceNameHint')} error={errors.name}>
+                <Input id="name" value={form.name} invalid={!!errors.name} onChange={(e) => set('name', e.target.value)} placeholder={t('sf.serviceNamePh')} />
               </Field>
-              <Field label="Category" required htmlFor="category" hint="Choose the most relevant category.">
+              <Field label={t('sf.category')} required htmlFor="category" hint={t('sf.categoryHint')}>
                 <Select id="category" value={form.category} onChange={(e) => set('category', e.target.value as ServiceCategory)}>
-                  {Object.entries(SERVICE_CATEGORY_LABELS).map(([value, label]) => (
+                  {Object.keys(SERVICE_CATEGORY_LABELS).map((value) => (
                     <option key={value} value={value}>
-                      {label}
+                      {t(`category.${value}` as TKey)}
                     </option>
                   ))}
                 </Select>
@@ -186,10 +201,10 @@ export function ServiceForm({ service }: { service?: Service }) {
             </div>
             <Field
               className="mt-4"
-              label="Description"
+              label={t('sf.description')}
               required
               htmlFor="description"
-              hint="Describe what the service includes, benefits, and any important details."
+              hint={t('sf.descriptionHint')}
               error={errors.description}
             >
               <Textarea
@@ -198,7 +213,7 @@ export function ServiceForm({ service }: { service?: Service }) {
                 invalid={!!errors.description}
                 maxLength={500}
                 onChange={(e) => set('description', e.target.value)}
-                placeholder="Fast and reliable candle run by experienced players…"
+                placeholder={t('sf.descriptionPh')}
               />
               <div className="mt-1 text-right text-xs text-ink-muted">{form.description.length}/500</div>
             </Field>
@@ -208,34 +223,37 @@ export function ServiceForm({ service }: { service?: Service }) {
           <Card>
             <CardHeader
               icon={<IconSettings width={20} height={20} />}
-              title="Service options"
-              subtitle="Configure the game-specific options for this service."
+              title={t('sf.serviceOptions')}
+              subtitle={t('sf.serviceOptionsSub')}
             />
             <div className="mt-4">
               <ImageUpload
-                label="Service image"
-                hint="Recommended 1280×720 (16:9)"
+                label={t('sf.serviceImage')}
+                hint={t('sf.serviceImageHint')}
                 value={form.imagePreview}
-                onChange={(url) => set('imagePreview', url)}
+                onChange={(url, file) => {
+                  set('imagePreview', url);
+                  set('imageFile', file);
+                }}
               />
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Server" required>
+              <Field label={t('sf.server')} required>
                 <div className="flex flex-wrap gap-4 pt-1">
                   <RadioPill name="server" value="global" checked={form.server === 'global'} onChange={(v) => set('server', v as ServerRegion)}>
-                    Global (International)
+                    {t('sf.global')}
                   </RadioPill>
                   <RadioPill name="server" value="china" checked={form.server === 'china'} onChange={(v) => set('server', v as ServerRegion)}>
-                    China
+                    {t('sf.china')}
                   </RadioPill>
                 </div>
               </Field>
-              <Field label="Duration" required>
+              <Field label={t('sf.duration')} required>
                 <div className="flex flex-wrap gap-4 pt-1">
                   {(Object.keys(SERVICE_DURATION_LABELS) as ServiceDuration[]).map((d) => (
                     <RadioPill key={d} name="duration" value={d} checked={form.duration === d} onChange={(v) => set('duration', v as ServiceDuration)}>
-                      {SERVICE_DURATION_LABELS[d]}
+                      {t(`duration.${d}` as TKey)}
                     </RadioPill>
                   ))}
                 </div>
@@ -245,27 +263,27 @@ export function ServiceForm({ service }: { service?: Service }) {
             {/* Configurable option groups */}
             <div className="mt-4">
               <div className="flex items-center justify-between">
-                <span className="field-label mb-0">Configurable options</span>
+                <span className="field-label mb-0">{t('sf.configurableOptions')}</span>
                 <Button variant="ghost" size="sm" onClick={addOption}>
-                  <IconPlus width={16} height={16} /> Add option
+                  <IconPlus width={16} height={16} /> {t('sf.addOption')}
                 </Button>
               </div>
               {form.options.length === 0 ? (
-                <p className="field-hint">No extra options. Add one (e.g. “Target candles”) to let customers choose.</p>
+                <p className="field-hint">{t('sf.noOptions')}</p>
               ) : (
                 <div className="mt-2 space-y-3">
                   {form.options.map((opt, idx) => (
                     <div key={opt.key} className="rounded-2xl border border-blush-soft bg-surface-soft p-3">
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <Field label="Option label" htmlFor={`opt-label-${idx}`}>
+                        <Field label={t('sf.optionLabel')} htmlFor={`opt-label-${idx}`}>
                           <Input
                             id={`opt-label-${idx}`}
                             value={opt.label}
                             onChange={(e) => updateOption(idx, { label: e.target.value })}
-                            placeholder="Target candles"
+                            placeholder={t('sf.optionLabelPh')}
                           />
                         </Field>
-                        <Field label="Choices (comma separated)" htmlFor={`opt-values-${idx}`}>
+                        <Field label={t('sf.choices')} htmlFor={`opt-values-${idx}`}>
                           <Input
                             id={`opt-values-${idx}`}
                             value={opt.values.join(', ')}
@@ -273,12 +291,12 @@ export function ServiceForm({ service }: { service?: Service }) {
                               const values = e.target.value.split(',').map((v) => v.trim()).filter(Boolean);
                               updateOption(idx, { values, defaultValue: values.includes(opt.defaultValue) ? opt.defaultValue : values[0] ?? '' });
                             }}
-                            placeholder="15 candles, 20 candles"
+                            placeholder={t('sf.choicesPh')}
                           />
                         </Field>
                       </div>
                       <div className="mt-2 flex items-end justify-between gap-3">
-                        <Field label="Default choice" htmlFor={`opt-default-${idx}`} className="max-w-xs">
+                        <Field label={t('sf.defaultChoice')} htmlFor={`opt-default-${idx}`} className="max-w-xs">
                           <Select id={`opt-default-${idx}`} value={opt.defaultValue} onChange={(e) => updateOption(idx, { defaultValue: e.target.value })}>
                             {opt.values.length === 0 && <option value="">—</option>}
                             {opt.values.map((v) => (
@@ -289,7 +307,7 @@ export function ServiceForm({ service }: { service?: Service }) {
                           </Select>
                         </Field>
                         <Button variant="danger" size="sm" onClick={() => removeOption(idx)}>
-                          <IconTrash width={15} height={15} /> Remove
+                          <IconTrash width={15} height={15} /> {t('sf.removeOption')}
                         </Button>
                       </div>
                     </div>
@@ -298,19 +316,19 @@ export function ServiceForm({ service }: { service?: Service }) {
               )}
             </div>
 
-            <Field className="mt-4" label="Preferred time (optional)" htmlFor="preferredTime" hint="We will try to accommodate your preferred time (GMT+8).">
-              <Input id="preferredTime" value={form.preferredTime} onChange={(e) => set('preferredTime', e.target.value)} placeholder="Select preferred time (e.g. evening)" />
+            <Field className="mt-4" label={t('sf.preferredTime')} htmlFor="preferredTime" hint={t('sf.preferredTimeHint')}>
+              <Input id="preferredTime" value={form.preferredTime} onChange={(e) => set('preferredTime', e.target.value)} placeholder={t('sf.preferredTimePh')} />
             </Field>
           </Card>
 
           {/* Pricing */}
           <Card>
-            <CardHeader icon={<IconCoins width={20} height={20} />} title="Pricing" subtitle="Set the price for this service." />
+            <CardHeader icon={<IconCoins width={20} height={20} />} title={t('sf.pricing')} subtitle={t('sf.pricingSub')} />
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Base price" required htmlFor="price" error={errors.price} hint="Set a fair price based on the service details.">
+              <Field label={t('sf.basePrice')} required htmlFor="price" error={errors.price} hint={t('sf.basePriceHint')}>
                 <Input id="price" inputMode="decimal" value={form.priceMajor} invalid={!!errors.price} onChange={(e) => set('priceMajor', e.target.value)} placeholder="8.00" />
               </Field>
-              <Field label="Currency" htmlFor="currency">
+              <Field label={t('sf.currency')} htmlFor="currency">
                 <Select id="currency" value={form.currency} onChange={(e) => set('currency', e.target.value as CurrencyCode)}>
                   <option value="MYR">MYR (RM)</option>
                   <option value="CNY">CNY (¥)</option>
@@ -321,20 +339,20 @@ export function ServiceForm({ service }: { service?: Service }) {
 
           {/* Availability */}
           <Card>
-            <CardHeader icon={<IconClock width={20} height={20} />} title="Availability" subtitle="Set the service status and completion details." />
+            <CardHeader icon={<IconClock width={20} height={20} />} title={t('sf.availability')} subtitle={t('sf.availabilitySub')} />
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Availability" required>
+              <Field label={t('sf.availability')} required>
                 <div className="space-y-2">
-                  <RadioCard name="status" value="active" checked={form.status === 'active'} onChange={(v) => set('status', v as 'active')} tone="success" title="Active" description="Visible in your store and can be purchased." />
-                  <RadioCard name="status" value="draft" checked={form.status === 'draft'} onChange={(v) => set('status', v as 'draft')} title="Draft" description="Save as draft, not visible to customers." />
+                  <RadioCard name="status" value="active" checked={form.status === 'active'} onChange={(v) => set('status', v as 'active')} tone="success" title={t('sf.activeTitle')} description={t('sf.activeDesc')} />
+                  <RadioCard name="status" value="draft" checked={form.status === 'draft'} onChange={(v) => set('status', v as 'draft')} title={t('sf.draftTitle')} description={t('sf.draftDesc')} />
                 </div>
               </Field>
-              <Field label="Estimated completion time" required htmlFor="eta" error={errors.estimatedCompletion} hint="The usual time to complete this service after order confirmation.">
+              <Field label={t('sf.eta')} required htmlFor="eta" error={errors.estimatedCompletion} hint={t('sf.etaHint')}>
                 <Select id="eta" value={form.estimatedCompletion} onChange={(e) => set('estimatedCompletion', e.target.value)}>
-                  <option value="1 day">1 day</option>
-                  <option value="3 days">3 days</option>
-                  <option value="7 days">7 days</option>
-                  <option value="30 days">30 days</option>
+                  <option value="1 day">{t('duration.1d')}</option>
+                  <option value="3 days">{t('sf.eta3')}</option>
+                  <option value="7 days">{t('duration.7d')}</option>
+                  <option value="30 days">{t('duration.30d')}</option>
                 </Select>
               </Field>
             </div>
@@ -342,9 +360,9 @@ export function ServiceForm({ service }: { service?: Service }) {
 
           {/* Customer instructions */}
           <Card>
-            <CardHeader icon={<IconFile width={20} height={20} />} title="Customer instructions" subtitle="Provide important information for customers." />
-            <Field className="mt-4" htmlFor="instructions" hint="Include any requirements, preparation, or notes for customers.">
-              <Textarea id="instructions" value={form.customerInstructions} maxLength={500} onChange={(e) => set('customerInstructions', e.target.value)} placeholder="Please make sure your Sky account is linked…" />
+            <CardHeader icon={<IconFile width={20} height={20} />} title={t('sf.customerInstructions')} subtitle={t('sf.customerInstructionsSub')} />
+            <Field className="mt-4" htmlFor="instructions" hint={t('sf.instructionsHint')}>
+              <Textarea id="instructions" value={form.customerInstructions} maxLength={500} onChange={(e) => set('customerInstructions', e.target.value)} placeholder={t('sf.instructionsPh')} />
               <div className="mt-1 text-right text-xs text-ink-muted">{form.customerInstructions.length}/500</div>
             </Field>
           </Card>
@@ -352,10 +370,10 @@ export function ServiceForm({ service }: { service?: Service }) {
           {/* Actions (mobile shows here; desktop also shows sticky footer) */}
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
             <Button variant="outline" onClick={() => submit('draft')} disabled={saving !== null}>
-              <IconSave width={18} height={18} /> {saving === 'draft' ? 'Saving…' : 'Save as draft'}
+              <IconSave width={18} height={18} /> {saving === 'draft' ? t('sf.savingDraft') : t('sf.saveDraft')}
             </Button>
             <Button onClick={() => submit('active')} disabled={saving !== null}>
-              <IconSend width={18} height={18} /> {saving === 'publish' ? 'Publishing…' : 'Publish service'}
+              <IconSend width={18} height={18} /> {saving === 'publish' ? t('sf.publishing') : t('sf.publishService')}
             </Button>
           </div>
         </div>
@@ -363,21 +381,21 @@ export function ServiceForm({ service }: { service?: Service }) {
         {/* Live preview column */}
         <div className="lg:col-span-1">
           <Card className="lg:sticky lg:top-24">
-            <CardHeader icon={<IconEye width={20} height={20} />} title="Service preview" subtitle="This is how your service will appear in the store." />
+            <CardHeader icon={<IconEye width={20} height={20} />} title={t('sf.servicePreview')} subtitle={t('sf.servicePreviewSub')} />
             <div className="mt-4 rounded-2xl border border-blush-soft p-3">
               <div className="relative">
-                <ImageSlot imageKey={previewImageKey} ratio="16 / 10" alt={form.name || 'Service image'} />
+                <ImageSlot imageKey={previewImageKey} ratio="16 / 10" alt={form.name || t('sf.serviceImageAlt')} />
                 <Badge tone="blush" className="absolute right-2 top-2">
-                  {SERVICE_CATEGORY_LABELS[form.category]}
+                  {t(`category.${form.category}` as TKey)}
                 </Badge>
               </div>
-              <h3 className="mt-3 font-display text-xl text-plum">{form.name || 'Service name'}</h3>
+              <h3 className="mt-3 font-display text-xl text-plum">{form.name || t('sf.serviceNameFallback')}</h3>
               <div className="mt-1 flex items-center gap-2">
                 <span className="font-display text-lg font-semibold text-primary">
                   {formatMoney(priceMinor, form.currency)}
                 </span>
                 <Badge tone={form.status === 'active' ? 'success' : 'warn'}>
-                  {form.status === 'active' ? 'Active' : 'Draft'}
+                  {form.status === 'active' ? t('serviceStatus.active') : t('serviceStatus.draft')}
                 </Badge>
               </div>
               <ul className="mt-3 space-y-1.5 text-sm text-ink-soft">
@@ -385,7 +403,7 @@ export function ServiceForm({ service }: { service?: Service }) {
                   (o) => o.label && <li key={o.key} className="flex items-center gap-2"><IconSettings width={15} height={15} className="text-rose" /> {o.label}: {o.defaultValue || o.values[0]}</li>,
                 )}
                 <li className="flex items-center gap-2"><IconClock width={15} height={15} className="text-rose" /> {form.estimatedCompletion}</li>
-                <li className="flex items-center gap-2"><IconGlobe width={15} height={15} className="text-rose" /> {form.server === 'global' ? 'Global (International)' : 'China'}</li>
+                <li className="flex items-center gap-2"><IconGlobe width={15} height={15} className="text-rose" /> {form.server === 'global' ? t('sf.global') : t('sf.china')}</li>
               </ul>
               {form.description && <p className="mt-3 text-sm text-ink-soft">{form.description}</p>}
             </div>

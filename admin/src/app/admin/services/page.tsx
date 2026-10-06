@@ -20,6 +20,8 @@ import { Pagination } from '@/components/admin/Pagination';
 import { EmptyState, LoadingRows } from '@/components/admin/States';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
+import { useI18n } from '@/lib/i18n/I18nProvider';
+import type { TKey } from '@/lib/i18n/dictionary';
 import {
   IconBag,
   IconCart,
@@ -33,9 +35,17 @@ import {
 } from '@/components/ui/icons';
 
 const PER_PAGE = 10;
+const MS_PER_DAY = 86_400_000;
+
+/** Period-over-period % change, honest when the prior period is empty. */
+function growthPercent(current: number, previous: number): number {
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return Math.round(((current - previous) / previous) * 100);
+}
 
 export default function ServicesPage() {
   const { notify } = useToast();
+  const { t } = useI18n();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string>('all');
   const [status, setStatus] = useState<string>('all');
@@ -44,6 +54,7 @@ export default function ServicesPage() {
   const [rows, setRows] = useState<Service[]>([]);
   const [total, setTotal] = useState(0);
   const [allServices, setAllServices] = useState<Service[]>([]);
+  const [orderStats, setOrderStats] = useState<{ total: number; delta: number }>({ total: 0, delta: 0 });
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -52,7 +63,10 @@ export default function ServicesPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [list, all] = await Promise.all([
+    const now = Date.now();
+    const from30 = new Date(now - 30 * MS_PER_DAY).toISOString();
+    const from60 = new Date(now - 60 * MS_PER_DAY).toISOString();
+    const [list, all, curOrders, prevOrders, totalOrders] = await Promise.all([
       api.listServices({
         search,
         category: category as never,
@@ -61,10 +75,18 @@ export default function ServicesPage() {
         perPage: PER_PAGE,
       }),
       api.listServices({ perPage: 999 }),
+      // Real order counts: last 30 days vs the 30 days before, plus lifetime total.
+      api.listOrders({ dateFrom: from30, perPage: 1 }),
+      api.listOrders({ dateFrom: from60, dateTo: from30.slice(0, 10), perPage: 1 }),
+      api.listOrders({ perPage: 1 }),
     ]);
     setRows(list.data);
     setTotal(list.total);
     setAllServices(all.data);
+    setOrderStats({
+      total: totalOrders.total,
+      delta: growthPercent(curOrders.total, prevOrders.total),
+    });
     setLoading(false);
   }, [search, category, status, page]);
 
@@ -80,8 +102,20 @@ export default function ServicesPage() {
   const stats = useMemo(() => {
     const active = allServices.filter((s) => s.status === 'active').length;
     const draft = allServices.filter((s) => s.status === 'draft').length;
-    const orders = allServices.reduce((sum, s) => sum + s.ordersCount, 0);
-    return { total: allServices.length, active, draft, orders };
+    // Deltas = growth vs 30 days ago, computed from each service's createdAt.
+    const cutoff = Date.now() - 30 * MS_PER_DAY;
+    const existedBy30 = (s: Service) => new Date(s.createdAt).getTime() <= cutoff;
+    const total30 = allServices.filter(existedBy30).length;
+    const active30 = allServices.filter((s) => s.status === 'active' && existedBy30(s)).length;
+    const draft30 = allServices.filter((s) => s.status === 'draft' && existedBy30(s)).length;
+    return {
+      total: allServices.length,
+      active,
+      draft,
+      totalDelta: growthPercent(allServices.length, total30),
+      activeDelta: growthPercent(active, active30),
+      draftDelta: growthPercent(draft, draft30),
+    };
   }, [allServices]);
 
   const allOnPageSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
@@ -107,14 +141,14 @@ export default function ServicesPage() {
     setMenuFor(null);
     const nextStatus: ServiceStatus = service.status === 'active' ? 'draft' : 'active';
     await api.setServiceStatus(service.id, nextStatus);
-    notify(nextStatus === 'active' ? 'Service published.' : 'Service unpublished.');
+    notify(nextStatus === 'active' ? t('sv.servicePublished') : t('sv.serviceUnpublished'));
     load();
   }
 
   async function handleArchiveOne(service: Service) {
     setMenuFor(null);
     await api.archiveServices([service.id]);
-    notify('Service archived.');
+    notify(t('sv.serviceArchived'));
     load();
   }
 
@@ -124,20 +158,20 @@ export default function ServicesPage() {
     setBusy(false);
     setConfirmArchive(false);
     setSelected(new Set());
-    notify(`${selected.size} service(s) archived.`);
+    notify(`${selected.size} ${t('sv.servicesArchivedSuffix')}`);
     load();
   }
 
   return (
     <div onClick={() => setMenuFor(null)}>
-      <PageHeader title="Services" subtitle="Manage Sky game services for your Dreammy store." />
+      <PageHeader title={t('sv.title')} subtitle={t('sv.subtitle')} />
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        <StatCard icon={IconBag} iconTone="blush" label="Total services" value={String(stats.total)} deltaPercent={33} deltaLabel="vs previous 30 days" />
-        <StatCard icon={IconCart} iconTone="peach" label="Active services" value={String(stats.active)} deltaPercent={50} deltaLabel="vs previous 30 days" />
-        <StatCard icon={IconFile} iconTone="lavender" label="Draft services" value={String(stats.draft)} deltaPercent={0} deltaLabel="vs previous 30 days" />
-        <StatCard icon={IconChart} iconTone="blush" label="Total orders" value={String(stats.orders)} deltaPercent={18} deltaLabel="vs previous 30 days" />
+        <StatCard icon={IconBag} iconTone="blush" label={t('sv.totalServices')} value={String(stats.total)} deltaPercent={stats.totalDelta} deltaLabel={t('sv.vsPrev30')} />
+        <StatCard icon={IconCart} iconTone="peach" label={t('sv.activeServices')} value={String(stats.active)} deltaPercent={stats.activeDelta} deltaLabel={t('sv.vsPrev30')} />
+        <StatCard icon={IconFile} iconTone="lavender" label={t('sv.draftServices')} value={String(stats.draft)} deltaPercent={stats.draftDelta} deltaLabel={t('sv.vsPrev30')} />
+        <StatCard icon={IconChart} iconTone="blush" label={t('sv.totalOrders')} value={String(orderStats.total)} deltaPercent={orderStats.delta} deltaLabel={t('sv.vsPrev30')} />
       </div>
 
       {/* Filters */}
@@ -145,28 +179,28 @@ export default function ServicesPage() {
         <div className="flex-1">
           <Input
             leftIcon={<IconSearch width={18} height={18} />}
-            placeholder="Search services (name, category…)"
+            placeholder={t('sv.searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            aria-label="Search services"
+            aria-label={t('sv.search')}
           />
         </div>
-        <Select aria-label="Category" value={category} onChange={(e) => setCategory(e.target.value)} className="sm:w-44">
-          <option value="all">All categories</option>
-          {Object.entries(SERVICE_CATEGORY_LABELS).map(([value, label]) => (
+        <Select aria-label={t('sv.category')} value={category} onChange={(e) => setCategory(e.target.value)} className="sm:w-44">
+          <option value="all">{t('common.allCategories')}</option>
+          {Object.keys(SERVICE_CATEGORY_LABELS).map((value) => (
             <option key={value} value={value}>
-              {label}
+              {t(`category.${value}` as TKey)}
             </option>
           ))}
         </Select>
-        <Select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)} className="sm:w-36">
-          <option value="all">All status</option>
-          <option value="active">Active</option>
-          <option value="draft">Draft</option>
+        <Select aria-label={t('sv.status')} value={status} onChange={(e) => setStatus(e.target.value)} className="sm:w-36">
+          <option value="all">{t('common.allStatus')}</option>
+          <option value="active">{t('serviceStatus.active')}</option>
+          <option value="draft">{t('serviceStatus.draft')}</option>
         </Select>
         <Link href="/admin/services/new">
           <Button className="w-full sm:w-auto">
-            <IconPlus width={18} height={18} /> Add service
+            <IconPlus width={18} height={18} /> {t('sv.addService')}
           </Button>
         </Link>
       </div>
@@ -175,7 +209,7 @@ export default function ServicesPage() {
       <Card className="mt-5">
         <CardHeader
           icon={<IconBag width={20} height={20} />}
-          title="Service Catalogue"
+          title={t('sv.catalogue')}
           action={
             <Button
               variant="outline"
@@ -186,7 +220,7 @@ export default function ServicesPage() {
                 setConfirmArchive(true);
               }}
             >
-              <IconTrash width={16} height={16} /> Archive selected
+              <IconTrash width={16} height={16} /> {t('sv.archiveSelected')}
               {selected.size > 0 && ` (${selected.size})`}
             </Button>
           }
@@ -198,12 +232,12 @@ export default function ServicesPage() {
           ) : rows.length === 0 ? (
             <EmptyState
               icon={IconBag}
-              title="No services found"
-              description="Try adjusting your search or filters, or add a new service."
+              title={t('sv.noServices')}
+              description={t('sv.noServicesDesc')}
               action={
                 <Link href="/admin/services/new">
                   <Button size="sm">
-                    <IconPlus width={16} height={16} /> Add service
+                    <IconPlus width={16} height={16} /> {t('sv.addService')}
                   </Button>
                 </Link>
               }
@@ -216,14 +250,14 @@ export default function ServicesPage() {
                   <thead>
                     <tr className="border-b border-blush-soft text-left text-xs uppercase tracking-wide text-ink-muted">
                       <th className="w-8 pb-3">
-                        <input type="checkbox" aria-label="Select all" checked={allOnPageSelected} onChange={toggleAll} className="h-4 w-4 accent-primary" />
+                        <input type="checkbox" aria-label={t('sv.selectAll')} checked={allOnPageSelected} onChange={toggleAll} className="h-4 w-4 accent-primary" />
                       </th>
-                      <th className="pb-3 font-semibold">Service</th>
-                      <th className="pb-3 font-semibold">Category</th>
-                      <th className="pb-3 font-semibold">Price</th>
-                      <th className="pb-3 font-semibold">Status</th>
-                      <th className="pb-3 font-semibold">Updated</th>
-                      <th className="pb-3 font-semibold text-right">Actions</th>
+                      <th className="pb-3 font-semibold">{t('sv.thService')}</th>
+                      <th className="pb-3 font-semibold">{t('sv.thCategory')}</th>
+                      <th className="pb-3 font-semibold">{t('sv.thPrice')}</th>
+                      <th className="pb-3 font-semibold">{t('sv.thStatus')}</th>
+                      <th className="pb-3 font-semibold">{t('sv.thUpdated')}</th>
+                      <th className="pb-3 font-semibold text-right">{t('sv.thActions')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-blush-soft">
@@ -242,7 +276,7 @@ export default function ServicesPage() {
                           </div>
                         </td>
                         <td className="py-3">
-                          <Badge tone="blush">{SERVICE_CATEGORY_LABELS[s.category]}</Badge>
+                          <Badge tone="blush">{t(`category.${s.category}` as TKey)}</Badge>
                         </td>
                         <td className="py-3 font-medium text-ink">{formatMoney(s.priceMinor, s.currency, { decimals: false })}</td>
                         <td className="py-3">
@@ -280,20 +314,20 @@ export default function ServicesPage() {
                           <ServiceBadge status={s.status} />
                         </div>
                         <Badge tone="blush" className="mt-1">
-                          {SERVICE_CATEGORY_LABELS[s.category]}
+                          {t(`category.${s.category}` as TKey)}
                         </Badge>
                         <div className="mt-2 flex items-center justify-between">
                           <span className="font-semibold text-ink">{formatMoney(s.priceMinor, s.currency, { decimals: false })}</span>
-                          <span className="text-xs text-ink-muted">Updated {formatDate(s.updatedAt)}</span>
+                          <span className="text-xs text-ink-muted">{t('sv.updatedPrefix')} {formatDate(s.updatedAt)}</span>
                         </div>
                         <div className="mt-2 flex gap-2">
                           <Link href={`/admin/services/${s.id}/edit`} className="flex-1">
                             <Button variant="outline" size="sm" block>
-                              <IconEdit width={15} height={15} /> Edit
+                              <IconEdit width={15} height={15} /> {t('common.edit')}
                             </Button>
                           </Link>
                           <Button variant="secondary" size="sm" onClick={() => handleToggleStatus(s)}>
-                            {s.status === 'active' ? 'Unpublish' : 'Publish'}
+                            {s.status === 'active' ? t('common.unpublish') : t('common.publish')}
                           </Button>
                         </div>
                       </div>
@@ -312,9 +346,9 @@ export default function ServicesPage() {
 
       <ConfirmDialog
         open={confirmArchive}
-        title="Archive services?"
-        description={`This will archive ${selected.size} selected service(s) so they no longer appear in the store. You can restore them later. (Demo — mock data only.)`}
-        confirmLabel="Archive"
+        title={t('sv.confirmArchiveTitle')}
+        description={`${t('sv.confirmArchivePrefix')} ${selected.size} ${t('sv.confirmArchiveSuffix')}`}
+        confirmLabel={t('common.archive')}
         tone="danger"
         busy={busy}
         onConfirm={handleArchiveSelected}
@@ -337,11 +371,12 @@ function RowMenu({
   onPublishToggle: () => void;
   onArchive: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="relative inline-block">
       <button
         type="button"
-        aria-label={`Actions for ${service.name}`}
+        aria-label={t('sv.thActions')}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={onToggle}
@@ -356,13 +391,13 @@ function RowMenu({
           onClick={(e) => e.stopPropagation()}
         >
           <Link href={`/admin/services/${service.id}/edit`} role="menuitem" className="flex items-center gap-2 px-4 py-2.5 text-sm text-ink hover:bg-blush-soft">
-            <IconEdit width={16} height={16} /> Edit
+            <IconEdit width={16} height={16} /> {t('common.edit')}
           </Link>
           <button role="menuitem" onClick={onPublishToggle} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-ink hover:bg-blush-soft">
-            <IconChart width={16} height={16} /> {service.status === 'active' ? 'Unpublish' : 'Publish'}
+            <IconChart width={16} height={16} /> {service.status === 'active' ? t('common.unpublish') : t('common.publish')}
           </button>
           <button role="menuitem" onClick={onArchive} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-danger hover:bg-danger-soft">
-            <IconTrash width={16} height={16} /> Archive
+            <IconTrash width={16} height={16} /> {t('common.archive')}
           </button>
         </div>
       )}

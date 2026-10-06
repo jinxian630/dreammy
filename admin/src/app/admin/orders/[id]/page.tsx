@@ -3,7 +3,7 @@
 import { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import type { FulfillmentStatus, Guardian, Order } from '@/types';
+import type { FulfillmentStatus, Guardian, Order, StaffOption } from '@/types';
 import { FULFILLMENT_STATUS_LABELS } from '@/types';
 import { formatMoney } from '@/lib/money';
 import { formatDateTime } from '@/lib/format';
@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { PaymentBadge, FulfillmentBadge } from '@/components/admin/StatusBadge';
 import { ImageSlot } from '@/components/admin/ImageSlot';
 import { ImageUpload } from '@/components/admin/ImageUpload';
+import { uploadImage } from '@/lib/upload';
 import { Timeline } from '@/components/admin/Timeline';
 import { ProgressBar } from '@/components/admin/ProgressBar';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
@@ -35,16 +36,27 @@ import {
   IconSave,
   IconClock,
 } from '@/components/ui/icons';
+import { useCurrentMember } from '@/lib/auth/useCurrentMember';
+import { canMutate } from '@/lib/auth/roles';
+import { useI18n } from '@/lib/i18n/I18nProvider';
+import type { TKey } from '@/lib/i18n/dictionary';
 
 type ActionKind = 'complete' | 'cancel' | 'refund' | null;
 
 export default function OrderDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { notify } = useToast();
+  const { t } = useI18n();
+  const { member } = useCurrentMember();
+  // Non-mutating roles get a read-only order view; editing controls are hidden.
+  // The server also enforces this (order mutations require MUTATE_ROLES).
+  const canEdit = !member || canMutate(member.role);
   const [order, setOrder] = useState<Order | null>(null);
   const [guardians, setGuardians] = useState<Guardian[]>([]);
+  const [staff, setStaff] = useState<StaffOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [guardianId, setGuardianId] = useState<string>('');
+  const [staffSelect, setStaffSelect] = useState<string>('');
   const [statusValue, setStatusValue] = useState<FulfillmentStatus>('pending');
   const [note, setNote] = useState('');
   const [action, setAction] = useState<ActionKind>(null);
@@ -53,22 +65,35 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
   const hydrate = useCallback((o: Order) => {
     setOrder(o);
     setGuardianId(o.guardianId ?? '');
+    setStaffSelect(o.assignment?.staffId ?? '');
     setStatusValue(o.fulfillmentStatus);
     setNote(o.internalNotes);
   }, []);
 
   useEffect(() => {
     let active = true;
-    Promise.all([api.getOrder(id), api.listGuardians()]).then(([o, g]) => {
+    Promise.all([api.getOrder(id), api.listGuardians(), api.listStaff()]).then(([o, g, s]) => {
       if (!active) return;
       if (o) hydrate(o);
       setGuardians(g);
+      setStaff(s);
       setLoading(false);
     });
     return () => {
       active = false;
     };
   }, [id, hydrate]);
+
+  // Near real-time: refresh the order (status, assignment, timeline) on an
+  // interval. Only the display state is replaced — editable fields are left
+  // alone, and polling pauses while a confirmation dialog or action is running.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (action || busy) return;
+      api.getOrder(id).then((o) => o && setOrder(o));
+    }, 20000);
+    return () => clearInterval(timer);
+  }, [id, action, busy]);
 
   if (loading) {
     return (
@@ -83,11 +108,11 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
       <div className="admin-card p-6">
         <EmptyState
           icon={IconClipboard}
-          title="Order not found"
-          description="This order does not exist or the link is incorrect."
+          title={t('od.notFound')}
+          description={t('od.notFoundDesc')}
           action={
             <Link href="/admin/orders">
-              <Button size="sm">Back to orders</Button>
+              <Button size="sm">{t('od.back')}</Button>
             </Link>
           }
         />
@@ -99,24 +124,36 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
     if (!guardianId) return;
     const updated = await api.assignGuardian(order!.id, guardianId);
     hydrate(updated);
-    notify('Guardian reassigned.');
+    notify(t('od.toastGuardianReassigned'));
+  }
+
+  async function setAssignee(staffId: string | null) {
+    const updated = await api.assignStaff(order!.id, staffId);
+    hydrate(updated);
+    notify(staffId ? t('od.toastTaskAssigned') : t('od.toastAssignmentCleared'));
   }
 
   async function updateStatus() {
     const updated = await api.updateFulfillment(order!.id, statusValue);
     hydrate(updated);
-    notify('Order status updated.');
+    notify(t('od.toastStatusUpdated'));
   }
 
   async function saveNote() {
     const updated = await api.saveInternalNote(order!.id, note);
     hydrate(updated);
-    notify('Internal note saved.');
+    notify(t('od.toastNoteSaved'));
   }
 
-  async function onScreenshot(slot: 'before' | 'after', url: string | null) {
-    const updated = await api.setScreenshot(order!.id, slot, url);
-    hydrate(updated);
+  async function onScreenshot(slot: 'before' | 'after', url: string | null, file: File | null) {
+    try {
+      // Upload the chosen file to Supabase Storage; persist the public URL.
+      const stored = file ? await uploadImage(file, 'order-screenshots') : url;
+      const updated = await api.setScreenshot(order!.id, slot, stored);
+      hydrate(updated);
+    } catch {
+      notify(t('od.toastScreenshotFailed'), 'error');
+    }
   }
 
   async function runAction() {
@@ -125,13 +162,13 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
     let updated: Order;
     if (action === 'complete') {
       updated = await api.completeOrder(order.id);
-      notify('Order marked as completed.');
+      notify(t('od.toastCompleted'));
     } else if (action === 'cancel') {
       updated = await api.cancelOrder(order.id);
-      notify('Order cancelled.');
+      notify(t('od.toastCancelled'));
     } else {
       updated = await api.requestRefund(order.id);
-      notify('Refund requested (demo).');
+      notify(t('od.toastRefund'));
     }
     hydrate(updated);
     setBusy(false);
@@ -144,9 +181,9 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
     <div>
       <div className="mb-4 flex items-center justify-between">
         <Link href="/admin/orders" className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
-          <IconArrowLeft width={18} height={18} /> Back to orders
+          <IconArrowLeft width={18} height={18} /> {t('od.back')}
         </Link>
-        <span className="font-display text-lg text-plum">Order {order.code}</span>
+        <span className="font-display text-lg text-plum">{t('od.order')} {order.code}</span>
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -155,7 +192,7 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
           <Card>
             <CardHeader
               icon={<IconClipboard width={20} height={20} />}
-              title="Order Summary"
+              title={t('od.summary')}
               action={
                 <div className="flex flex-wrap items-center gap-2">
                   <PaymentBadge status={order.paymentStatus} />
@@ -163,63 +200,111 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
                 </div>
               }
             />
-            <p className="mt-1 text-xs text-ink-muted">Created {formatDateTime(order.createdAt)}</p>
+            <p className="mt-1 text-xs text-ink-muted">{t('od.created')} {formatDateTime(order.createdAt)}</p>
             <div className="mt-4 flex flex-col gap-4 sm:flex-row">
               <ImageSlot imageKey={order.serviceImageKey} ratio="1 / 1" className="h-28 w-28 flex-shrink-0" alt={order.serviceName} />
               <div className="min-w-0 flex-1">
                 <h3 className="font-display text-xl text-plum">{order.serviceName}</h3>
                 {order.serviceTagline && <p className="text-sm text-ink-soft">{order.serviceTagline}</p>}
                 <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                  <SummaryItem icon={<IconUser width={16} height={16} />} label="Traveler" value={order.traveler.name} />
-                  <SummaryItem icon={<IconGlobe width={16} height={16} />} label="Server" value={order.config.find((c) => c.label === 'Server')?.value ?? '—'} />
-                  <SummaryItem icon={<IconClock width={16} height={16} />} label="Quantity" value={order.config.find((c) => c.label === 'Quantity')?.value ?? `${order.progress.target} ${order.progress.unit}`} />
-                  <SummaryItem icon={<IconCoins width={16} height={16} />} label="Amount" value={formatMoney(order.amountMinor, order.currency)} />
+                  <SummaryItem icon={<IconUser width={16} height={16} />} label={t('od.traveler')} value={order.traveler.name} />
+                  <SummaryItem icon={<IconGlobe width={16} height={16} />} label={t('od.server')} value={order.config.find((c) => c.label === 'Server')?.value ?? '—'} />
+                  <SummaryItem icon={<IconClock width={16} height={16} />} label={t('od.quantity')} value={order.config.find((c) => c.label === 'Quantity')?.value ?? `${order.progress.target} ${order.progress.unit}`} />
+                  <SummaryItem icon={<IconCoins width={16} height={16} />} label={t('od.amount')} value={formatMoney(order.amountMinor, order.currency)} />
                 </dl>
               </div>
             </div>
           </Card>
 
           {/* Guardian + Status */}
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <Card>
-              <CardHeader icon={<IconUser width={20} height={20} />} title="Guardian Assignment" subtitle="Assign a guardian to handle this order." />
-              <div className="mt-4 flex items-end gap-2">
-                <Select aria-label="Guardian" value={guardianId} onChange={(e) => setGuardianId(e.target.value)} className="flex-1">
-                  <option value="">Unassigned</option>
-                  {guardians.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name}
-                    </option>
-                  ))}
-                </Select>
-                <Button variant="outline" onClick={reassignGuardian} disabled={!guardianId || guardianId === order.guardianId}>
-                  <IconRefresh width={16} height={16} /> Reassign
+          {canEdit && (
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <Card>
+                <CardHeader icon={<IconUser width={20} height={20} />} title={t('od.guardianAssignment')} subtitle={t('od.guardianAssignmentSub')} />
+                <div className="mt-4 flex items-end gap-2">
+                  <Select aria-label={t('od.guardianAssignment')} value={guardianId} onChange={(e) => setGuardianId(e.target.value)} className="flex-1">
+                    <option value="">{t('od.unassigned')}</option>
+                    {guardians.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button variant="outline" onClick={reassignGuardian} disabled={!guardianId || guardianId === order.guardianId}>
+                    <IconRefresh width={16} height={16} /> {t('od.reassign')}
+                  </Button>
+                </div>
+              </Card>
+              <Card>
+                <CardHeader icon={<IconRefresh width={20} height={20} />} title={t('od.orderStatus')} subtitle={t('od.orderStatusSub')} />
+                <div className="mt-4 flex items-end gap-2">
+                  <Select aria-label={t('od.orderStatus')} value={statusValue} onChange={(e) => setStatusValue(e.target.value as FulfillmentStatus)} className="flex-1">
+                    {Object.keys(FULFILLMENT_STATUS_LABELS).map((value) => (
+                      <option key={value} value={value}>
+                        {t(`fulfillment.${value}` as TKey)}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button onClick={updateStatus} disabled={statusValue === order.fulfillmentStatus}>
+                    {t('od.updateStatus')}
+                  </Button>
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {/* Task Assignment — the team member responsible for this order.
+              Shown to every role; the guardian role can only claim/release it themselves. */}
+          <Card>
+            <CardHeader
+              icon={<IconUser width={20} height={20} />}
+              title={t('od.taskAssignment')}
+              subtitle={t('od.taskAssignmentSub')}
+            />
+            <div className="mt-4">
+              {canEdit ? (
+                <div className="flex items-end gap-2">
+                  <Select aria-label={t('orderStatus.assigneeAria')} value={staffSelect} onChange={(e) => setStaffSelect(e.target.value)} className="flex-1">
+                    <option value="">{t('od.unassigned')}</option>
+                    {staff.map((s) => (
+                      <option key={s.userId} value={s.userId}>
+                        {s.email}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button onClick={() => setAssignee(staffSelect || null)} disabled={staffSelect === (order.assignment?.staffId ?? '')}>
+                    <IconUser width={16} height={16} /> {t('od.assign')}
+                  </Button>
+                </div>
+              ) : order.assignment?.staffId === member?.userId ? (
+                <Button variant="outline" onClick={() => setAssignee(null)}>
+                  {t('od.release')}
                 </Button>
-              </div>
-            </Card>
-            <Card>
-              <CardHeader icon={<IconRefresh width={20} height={20} />} title="Order Status" subtitle="Update the current order status." />
-              <div className="mt-4 flex items-end gap-2">
-                <Select aria-label="Fulfillment status" value={statusValue} onChange={(e) => setStatusValue(e.target.value as FulfillmentStatus)} className="flex-1">
-                  {Object.entries(FULFILLMENT_STATUS_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </Select>
-                <Button onClick={updateStatus} disabled={statusValue === order.fulfillmentStatus}>
-                  Update status
+              ) : (
+                <Button onClick={() => setAssignee(member?.userId ?? null)} disabled={!member}>
+                  <IconUser width={16} height={16} /> {t('od.assignToMe')}
                 </Button>
-              </div>
-            </Card>
-          </div>
+              )}
+              {order.assignment ? (
+                <div className="mt-3 rounded-2xl bg-blush-soft/60 p-3 text-sm text-ink-soft">
+                  <p className="font-semibold text-plum">{order.assignment.staffEmail ?? '—'}</p>
+                  <p className="mt-0.5 text-xs text-ink-muted">
+                    {t('od.assignedBy')} {order.assignment.assignedByEmail ?? '—'}
+                    {order.assignment.assignedAt ? ` · ${formatDateTime(order.assignment.assignedAt)}` : ''}
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-ink-muted">{t('od.noAssignee')}</p>
+              )}
+            </div>
+          </Card>
 
           {/* Progress + Timeline */}
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <Card>
               <CardHeader
                 icon={<IconClipboard width={20} height={20} />}
-                title="Progress"
+                title={t('od.progress')}
                 action={
                   <span className="text-sm font-semibold text-ink-soft">
                     {order.progress.current} / {order.progress.target} {order.progress.unit} (
@@ -230,12 +315,12 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
               <div className="mt-4">
                 <ProgressBar value={order.progress.current} max={order.progress.target} />
                 <div className="mt-3 rounded-2xl bg-blush-soft/60 p-3 text-sm text-ink-soft">
-                  {order.progress.current} of {order.progress.target} {order.progress.unit} have been completed. Keep going! Update the status when the service is completed.
+                  {order.progress.current} / {order.progress.target} {order.progress.unit} {t('od.progressNote')}
                 </div>
               </div>
             </Card>
             <Card>
-              <CardHeader icon={<IconLightning width={20} height={20} />} title="Activity Timeline" />
+              <CardHeader icon={<IconLightning width={20} height={20} />} title={t('od.activityTimeline')} />
               <div className="mt-4">
                 <Timeline events={order.events} />
               </div>
@@ -243,87 +328,108 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
           </div>
 
           {/* Service report */}
-          <Card>
-            <CardHeader icon={<IconPhoto width={20} height={20} />} title="Service Report" subtitle="Upload screenshots to show the service progress and completion." />
-            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <ImageUpload label="Before (Start Screenshot)" hint="PNG, JPG or WebP (Max 5MB)" ratio="16 / 9" value={order.beforeScreenshot} onChange={(url) => onScreenshot('before', url)} />
-              <ImageUpload label="After (Completion Screenshot)" hint="PNG, JPG or WebP (Max 5MB)" ratio="16 / 9" value={order.afterScreenshot} onChange={(url) => onScreenshot('after', url)} />
-            </div>
-            <div className="mt-4 flex items-start gap-2 rounded-2xl bg-info-soft p-3 text-sm text-info">
-              <IconInfo width={18} height={18} className="mt-0.5 flex-shrink-0" />
-              <p>Completion screenshot is required before marking the order as completed. Uploads here are <strong>local previews only</strong> in demo mode.</p>
-            </div>
-          </Card>
+          {canEdit ? (
+            <Card>
+              <CardHeader icon={<IconPhoto width={20} height={20} />} title={t('od.serviceReport')} subtitle={t('od.serviceReportSub')} />
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <ImageUpload label={t('od.before')} hint={t('od.uploadHint')} ratio="16 / 9" value={order.beforeScreenshot} onChange={(url, file) => onScreenshot('before', url, file)} />
+                <ImageUpload label={t('od.after')} hint={t('od.uploadHint')} ratio="16 / 9" value={order.afterScreenshot} onChange={(url, file) => onScreenshot('after', url, file)} />
+              </div>
+              <div className="mt-4 flex items-start gap-2 rounded-2xl bg-info-soft p-3 text-sm text-info">
+                <IconInfo width={18} height={18} className="mt-0.5 flex-shrink-0" />
+                <p>{t('od.completionRequired')}</p>
+              </div>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader icon={<IconPhoto width={20} height={20} />} title={t('od.serviceReport')} />
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <ImageSlot imageKey={order.beforeScreenshot} ratio="16 / 9" alt={t('od.beforeAlt')} />
+                <ImageSlot imageKey={order.afterScreenshot} ratio="16 / 9" alt={t('od.afterAlt')} />
+              </div>
+            </Card>
+          )}
 
           {/* Payment breakdown + notes */}
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <Card>
-              <CardHeader icon={<IconCoins width={20} height={20} />} title="Payment Breakdown" />
+              <CardHeader icon={<IconCoins width={20} height={20} />} title={t('od.paymentBreakdown')} />
               <dl className="mt-4 space-y-2.5 text-sm">
-                <BreakdownRow label="Subtotal" value={formatMoney(order.breakdown.subtotalMinor, order.currency)} />
-                <BreakdownRow label="Discount" value={formatMoney(order.breakdown.discountMinor, order.currency)} />
-                <BreakdownRow label="Refund" value={formatMoney(order.breakdown.refundMinor, order.currency)} />
+                <BreakdownRow label={t('od.subtotal')} value={formatMoney(order.breakdown.subtotalMinor, order.currency)} />
+                <BreakdownRow label={t('od.discount')} value={formatMoney(order.breakdown.discountMinor, order.currency)} />
+                <BreakdownRow label={t('od.refund')} value={formatMoney(order.breakdown.refundMinor, order.currency)} />
                 <div className="border-t border-blush-soft pt-2.5">
-                  <BreakdownRow label="Total Paid" value={formatMoney(order.breakdown.totalMinor, order.currency)} bold />
+                  <BreakdownRow label={t('od.totalPaid')} value={formatMoney(order.breakdown.totalMinor, order.currency)} bold />
                 </div>
               </dl>
             </Card>
             <Card>
-              <CardHeader icon={<IconFile width={20} height={20} />} title="Internal Notes" subtitle="Add internal notes about this order (not visible to customer)." />
+              <CardHeader icon={<IconFile width={20} height={20} />} title={t('od.internalNotes')} subtitle={t('od.internalNotesSub')} />
               <div className="mt-4">
-                <Textarea value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="Write your notes here…" rows={4} />
-                <div className="mt-2 flex items-center justify-between">
-                  <span className="text-xs text-ink-muted">{note.length} / 500</span>
-                  <Button size="sm" onClick={saveNote} disabled={note === order.internalNotes}>
-                    <IconSave width={16} height={16} /> Save note
-                  </Button>
-                </div>
+                {canEdit ? (
+                  <>
+                    <Textarea value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder={t('od.notesPlaceholder')} rows={4} />
+                    <div className="mt-2 flex items-center justify-between">
+                      <span className="text-xs text-ink-muted">{note.length} / 500</span>
+                      <Button size="sm" onClick={saveNote} disabled={note === order.internalNotes}>
+                        <IconSave width={16} height={16} /> {t('od.saveNote')}
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <p className="whitespace-pre-wrap text-sm text-ink-soft">
+                    {order.internalNotes || t('od.noNotes')}
+                  </p>
+                )}
               </div>
             </Card>
           </div>
 
           {/* Actions */}
-          <Card>
-            <CardHeader icon={<IconLightning width={20} height={20} />} title="Actions" />
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <ActionTile
-                tone="primary"
-                icon={<IconCheckCircle width={18} height={18} />}
-                title="Complete order"
-                desc={completionBlocked ? 'Upload a completion screenshot first.' : `Mark as completed when the full ${order.progress.target} ${order.progress.unit} delivered.`}
-                disabled={order.fulfillmentStatus === 'completed' || order.fulfillmentStatus === 'cancelled' || completionBlocked}
-                onClick={() => setAction('complete')}
-              />
-              <ActionTile
-                tone="warn"
-                icon={<IconRefresh width={18} height={18} />}
-                title="Request refund"
-                desc="Process a refund for this order. Requires confirmation."
-                disabled={order.paymentStatus === 'refunded' || order.paymentStatus === 'pending'}
-                onClick={() => setAction('refund')}
-              />
-              <ActionTile
-                tone="danger"
-                icon={<IconX width={18} height={18} />}
-                title="Cancel order"
-                desc="Cancel this order if it cannot be completed. Requires confirmation."
-                disabled={order.fulfillmentStatus === 'cancelled' || order.fulfillmentStatus === 'completed'}
-                onClick={() => setAction('cancel')}
-              />
-            </div>
-          </Card>
+          {canEdit && (
+            <Card>
+              <CardHeader icon={<IconLightning width={20} height={20} />} title={t('od.actions')} />
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <ActionTile
+                  tone="primary"
+                  icon={<IconCheckCircle width={18} height={18} />}
+                  title={t('od.completeOrder')}
+                  desc={completionBlocked ? t('od.completeBlocked') : t('od.completeDesc')}
+                  disabled={order.fulfillmentStatus === 'completed' || order.fulfillmentStatus === 'cancelled' || completionBlocked}
+                  onClick={() => setAction('complete')}
+                />
+                <ActionTile
+                  tone="warn"
+                  icon={<IconRefresh width={18} height={18} />}
+                  title={t('od.requestRefund')}
+                  desc={t('od.requestRefundDesc')}
+                  disabled={order.paymentStatus === 'refunded' || order.paymentStatus === 'pending'}
+                  onClick={() => setAction('refund')}
+                />
+                <ActionTile
+                  tone="danger"
+                  icon={<IconX width={18} height={18} />}
+                  title={t('od.cancelOrder')}
+                  desc={t('od.cancelOrderDesc')}
+                  disabled={order.fulfillmentStatus === 'cancelled' || order.fulfillmentStatus === 'completed'}
+                  onClick={() => setAction('cancel')}
+                />
+              </div>
+            </Card>
+          )}
         </div>
 
         {/* Side rail (desktop) */}
         <div className="lg:col-span-1">
           <Card className="lg:sticky lg:top-24">
-            <h3 className="font-display text-lg text-plum">At a glance</h3>
+            <h3 className="font-display text-lg text-plum">{t('od.atAGlance')}</h3>
             <dl className="mt-3 space-y-2.5 text-sm">
-              <BreakdownRow label="Order" value={order.code} />
-              <BreakdownRow label="Payment" value={<PaymentBadge status={order.paymentStatus} />} />
-              <BreakdownRow label="Fulfillment" value={<FulfillmentBadge status={order.fulfillmentStatus} />} />
-              <BreakdownRow label="Guardian" value={order.guardianName ?? 'Unassigned'} />
-              <BreakdownRow label="Total" value={formatMoney(order.amountMinor, order.currency)} bold />
+              <BreakdownRow label={t('od.order')} value={order.code} />
+              <BreakdownRow label={t('orders.thPayment')} value={<PaymentBadge status={order.paymentStatus} />} />
+              <BreakdownRow label={t('orders.thFulfillment')} value={<FulfillmentBadge status={order.fulfillmentStatus} />} />
+              <BreakdownRow label={t('od.glanceGuardian')} value={order.guardianName ?? t('od.unassigned')} />
+              <BreakdownRow label={t('od.glanceAssignedTo')} value={order.assignment?.staffEmail ?? t('od.unassigned')} />
+              <BreakdownRow label={t('common.total')} value={formatMoney(order.amountMinor, order.currency)} bold />
             </dl>
           </Card>
         </div>
@@ -331,18 +437,18 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
 
       <ConfirmDialog
         open={action === 'complete'}
-        title="Complete this order?"
-        description="This marks the order as completed and sets progress to 100%. (Demo — updates mock state only.)"
-        confirmLabel="Complete order"
+        title={t('od.confirmCompleteTitle')}
+        description={t('od.confirmCompleteDesc')}
+        confirmLabel={t('od.completeOrder')}
         busy={busy}
         onConfirm={runAction}
         onCancel={() => setAction(null)}
       />
       <ConfirmDialog
         open={action === 'refund'}
-        title="Request a refund?"
-        description="This will mark the payment as refunded and set the paid total to zero. No real payment is processed. (Demo — updates mock state only.)"
-        confirmLabel="Request refund"
+        title={t('od.confirmRefundTitle')}
+        description={t('od.confirmRefundDesc')}
+        confirmLabel={t('od.requestRefund')}
         tone="danger"
         busy={busy}
         onConfirm={runAction}
@@ -350,9 +456,9 @@ export default function OrderDetailsPage({ params }: { params: Promise<{ id: str
       />
       <ConfirmDialog
         open={action === 'cancel'}
-        title="Cancel this order?"
-        description="This cancels the order. This cannot be undone in a real system. (Demo — updates mock state only.)"
-        confirmLabel="Cancel order"
+        title={t('od.confirmCancelTitle')}
+        description={t('od.confirmCancelDesc')}
+        confirmLabel={t('od.cancelOrder')}
         tone="danger"
         busy={busy}
         onConfirm={runAction}

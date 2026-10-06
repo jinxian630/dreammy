@@ -67,6 +67,14 @@ export interface Order {
   fulfillmentStatus: FulfillmentStatus;
   guardianId: string | null;
   guardianName: string | null;
+  /** Internal team member responsible for this order (one order = one task). */
+  assignment: {
+    staffId: string | null;
+    staffEmail: string | null;
+    assignedById: string | null;
+    assignedByEmail: string | null;
+    assignedAt: IsoDateTime | null;
+  } | null;
   progress: {
     current: number;
     target: number;

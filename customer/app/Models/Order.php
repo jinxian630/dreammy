@@ -15,6 +15,10 @@ class Order extends Model
         'config', 'guardian_name', 'guardian_avatar_key', 'guardian_note', 'guardian_online',
         'progress_current', 'progress_target', 'progress_unit', 'contact_name',
         'is_repurchase', 'review_left', 'placed_at', 'paid_at', 'expected_at', 'completed_at',
+        // Admin-managed fields (see 2026_07_02_000004 migration)
+        'payment_status', 'fulfillment_status', 'guardian_id', 'internal_notes',
+        'before_screenshot', 'after_screenshot',
+        'subtotal_minor', 'discount_minor', 'refund_minor', 'total_minor',
     ];
 
     protected $casts = [
@@ -30,7 +34,16 @@ class Order extends Model
         'paid_at' => 'datetime',
         'expected_at' => 'datetime',
         'completed_at' => 'datetime',
+        'subtotal_minor' => 'integer',
+        'discount_minor' => 'integer',
+        'refund_minor' => 'integer',
+        'total_minor' => 'integer',
     ];
+
+    public function guardian(): BelongsTo
+    {
+        return $this->belongsTo(Guardian::class);
+    }
 
     public function user(): BelongsTo
     {

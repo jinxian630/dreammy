@@ -18,6 +18,8 @@ export interface OrderQuery {
   search?: string;
   serviceId?: string | 'all';
   guardianId?: string | 'all';
+  /** Filter by assigned staff user id, or 'unassigned' for orders with no assignee. */
+  assignedStaffId?: string | 'all' | 'unassigned';
   currency?: CurrencyCode | 'all';
   paymentStatus?: PaymentStatus | 'all';
   fulfillmentStatus?: FulfillmentStatus | 'all';
@@ -30,7 +32,7 @@ export interface OrderQuery {
 
 export interface VoucherQuery {
   search?: string;
-  status?: 'all' | 'active' | 'scheduled' | 'disabled' | 'expired';
+  status?: 'all' | 'available' | 'unavailable';
 }
 
 export type ScreenshotSlot = 'before' | 'after';

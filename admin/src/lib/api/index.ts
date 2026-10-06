@@ -1,19 +1,16 @@
 import type { AdminApi } from './AdminApi';
-import { mockAdapter } from './mockAdapter';
+import { httpAdapter } from './httpAdapter';
 
 /**
  * The active data source for the whole admin app.
  *
- * DEMO MODE: this is the in-memory mock adapter. To connect the real Laravel
- * API later, implement `AdminApi` with `fetch` calls (see BACKEND.md) and swap
- * the assignment below — no page/component changes required.
- *
- *   export const api: AdminApi = httpAdapter;
+ * Backed by Supabase via Next.js route handlers under `/api/admin/**` (see
+ * `httpAdapter` + `src/lib/api/server/db.ts`). The secret key stays server-side.
  */
-export const api: AdminApi = mockAdapter;
+export const api: AdminApi = httpAdapter;
 
-/** Single flag the UI reads to show the "Demo data" badges. */
-export const IS_DEMO = true;
+/** Live data (Supabase), not demo — UI hides the "Demo data" badges. */
+export const IS_DEMO = false;
 
 export type { AdminApi, VoucherWithStatus } from './AdminApi';
 export type { OrderQuery, ServiceQuery, VoucherQuery, ScreenshotSlot } from './types';

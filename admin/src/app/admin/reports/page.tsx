@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/admin/States';
 import { TrendChart } from '@/components/admin/charts/TrendChart';
 import { StatusDonut, STATUS_TONE_COLORS } from '@/components/admin/charts/StatusDonut';
 import { useToast } from '@/components/ui/Toast';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 import {
   IconChart,
   IconCoins,
@@ -26,12 +27,12 @@ import {
   IconDownload,
   IconFile,
   IconInfo,
-  IconCalendar,
   IconClipboard,
 } from '@/components/ui/icons';
 
 export default function ReportsPage() {
   const { notify } = useToast();
+  const { t } = useI18n();
   const [currency, setCurrency] = useState<CurrencyCode>('MYR');
   const [serviceId, setServiceId] = useState('all');
   const [dateFrom, setDateFrom] = useState('2026-09-01');
@@ -63,7 +64,7 @@ export default function ReportsPage() {
   function handleCsv() {
     if (!report) return;
     downloadCsv(`dreammy-report-${currency}-demo.csv`, buildReportCsv(report));
-    notify(`Report CSV (${currency}) downloaded — demo data.`);
+    notify(`${t('reports.reportCsv')} (${currency}) ${t('reports.downloadedDemo')}`);
   }
 
   function handlePdf() {
@@ -75,15 +76,15 @@ export default function ReportsPage() {
   return (
     <div>
       <PageHeader
-        title="Reports & Analytics"
-        subtitle="View sales performance, service breakdown and order insights."
+        title={t('reports.title')}
+        subtitle={t('reports.subtitle')}
         actions={
           <div className="no-print flex flex-wrap gap-2">
             <Button variant="outline" onClick={handleCsv} disabled={!report}>
-              <IconDownload width={18} height={18} /> Download report
+              <IconDownload width={18} height={18} /> {t('reports.downloadReport')}
             </Button>
             <Button variant="secondary" onClick={handlePdf} disabled={!report}>
-              <IconFile width={18} height={18} /> Save as PDF
+              <IconFile width={18} height={18} /> {t('reports.saveAsPdf')}
             </Button>
           </div>
         }
@@ -91,25 +92,26 @@ export default function ReportsPage() {
 
       {/* Filters */}
       <Card className="no-print mb-5">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <label className="block">
-            <span className="field-label">Date range</span>
-            <div className="flex items-center gap-2">
-              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} aria-label="Date from" leftIcon={<IconCalendar width={16} height={16} />} />
-              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} aria-label="Date to" />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <label className="block min-w-0 sm:col-span-2 lg:col-span-2">
+            <span className="field-label">{t('reports.dateRange')}</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <Input type="date" className="min-w-0 flex-1" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} aria-label={t('orders.dateFrom')} />
+              <span className="shrink-0 text-ink-muted">–</span>
+              <Input type="date" className="min-w-0 flex-1" value={dateTo} onChange={(e) => setDateTo(e.target.value)} aria-label={t('orders.dateTo')} />
             </div>
           </label>
-          <label className="block">
-            <span className="field-label">Currency</span>
+          <label className="block min-w-0">
+            <span className="field-label">{t('reports.currency')}</span>
             <Select value={currency} onChange={(e) => setCurrency(e.target.value as CurrencyCode)}>
               <option value="MYR">MYR (RM)</option>
               <option value="CNY">CNY (¥)</option>
             </Select>
           </label>
-          <label className="block">
-            <span className="field-label">Service</span>
+          <label className="block min-w-0">
+            <span className="field-label">{t('reports.service')}</span>
             <Select value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
-              <option value="all">All services</option>
+              <option value="all">{t('common.allServices')}</option>
               {services.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
@@ -118,13 +120,13 @@ export default function ReportsPage() {
             </Select>
           </label>
           <div className="flex items-end">
-            <Button block onClick={() => notify('Filters applied (demo).')}>
-              Apply filters
+            <Button block onClick={() => notify(t('reports.filtersApplied'))}>
+              {t('reports.applyFilters')}
             </Button>
           </div>
         </div>
         <p className="field-hint mt-2">
-          MYR and CNY totals are reported separately. Showing <strong>{currency}</strong> for {rangeLabel}.
+          {t('reports.separatePrefix')} <strong>{currency}</strong> {t('reports.separateFor')} {rangeLabel}.
         </p>
       </Card>
 
@@ -136,16 +138,16 @@ export default function ReportsPage() {
             Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32" />)
           ) : (
             <>
-              <StatCard icon={IconChart} iconTone="blush" label="Gross sales" value={formatMoney(report.grossMinor, currency)} />
-              <StatCard icon={IconTicket} iconTone="peach" label="Discounts" value={formatMoney(report.discountsMinor, currency)} />
-              <StatCard icon={IconRefresh} iconTone="lavender" label="Refunds" value={formatMoney(report.refundsMinor, currency)} />
+              <StatCard icon={IconChart} iconTone="blush" label={t('reports.grossSales')} value={formatMoney(report.grossMinor, currency)} />
+              <StatCard icon={IconTicket} iconTone="peach" label={t('reports.discounts')} value={formatMoney(report.discountsMinor, currency)} />
+              <StatCard icon={IconRefresh} iconTone="lavender" label={t('reports.refunds')} value={formatMoney(report.refundsMinor, currency)} />
               <div className="admin-card p-4 sm:p-5">
                 <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-blush text-primary">
                   <IconCoins width={20} height={20} />
                 </span>
-                <p className="mt-3 text-sm font-medium text-ink-soft">Net sales</p>
+                <p className="mt-3 text-sm font-medium text-ink-soft">{t('reports.netSales')}</p>
                 <p className="mt-1 font-display text-2xl font-semibold text-plum">{formatMoney(report.netMinor, currency)}</p>
-                <p className="mt-1 text-xs text-ink-muted">Net = gross − discounts − refunds (excludes operating costs)</p>
+                <p className="mt-1 text-xs text-ink-muted">{t('reports.netFormula')}</p>
               </div>
             </>
           )}
@@ -158,16 +160,16 @@ export default function ReportsPage() {
             {/* Trend + service breakdown */}
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               <Card>
-                <CardHeader icon={<IconChart width={20} height={20} />} title="Daily Sales Trend" action={<Badge tone="blush">{rangeLabel}</Badge>} />
-                <p className="mt-1 text-xs text-ink-muted">Daily sales ({currency})</p>
+                <CardHeader icon={<IconChart width={20} height={20} />} title={t('reports.dailySalesTrend')} action={<Badge tone="blush">{rangeLabel}</Badge>} />
+                <p className="mt-1 text-xs text-ink-muted">{t('reports.dailySales')} ({currency})</p>
                 <div className="mt-3">
                   <TrendChart data={report.salesTrend} format={(v) => formatMoney(v, currency, { decimals: false })} height={240} />
                 </div>
               </Card>
 
               <Card>
-                <CardHeader icon={<IconChart width={20} height={20} />} title="Sales by Service" />
-                <p className="mt-1 text-xs text-ink-muted">Gross sales ({currency})</p>
+                <CardHeader icon={<IconChart width={20} height={20} />} title={t('reports.salesByService')} />
+                <p className="mt-1 text-xs text-ink-muted">{t('reports.grossSales')} ({currency})</p>
                 <ServiceBars report={report} currency={currency} />
               </Card>
             </div>
@@ -175,9 +177,9 @@ export default function ReportsPage() {
             {/* Status donut + summary */}
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               <Card>
-                <CardHeader icon={<IconClipboard width={20} height={20} />} title="Order Status Breakdown" />
+                <CardHeader icon={<IconClipboard width={20} height={20} />} title={t('reports.orderStatusBreakdown')} />
                 <div className="mt-4 flex flex-col items-center gap-5 sm:flex-row sm:items-center">
-                  <StatusDonut slices={report.statusDistribution} centerValue={String(report.totalOrders)} centerLabel="Total orders" />
+                  <StatusDonut slices={report.statusDistribution} centerValue={String(report.totalOrders)} centerLabel={t('reports.totalOrders')} />
                   <ul className="flex-1 space-y-2">
                     {report.statusDistribution.map((s) => (
                       <li key={s.key} className="flex items-center gap-2 text-sm">
@@ -193,31 +195,31 @@ export default function ReportsPage() {
               </Card>
 
               <Card>
-                <CardHeader icon={<IconFile width={20} height={20} />} title="Summary" />
+                <CardHeader icon={<IconFile width={20} height={20} />} title={t('reports.summary')} />
                 <div className="mt-4 grid grid-cols-2 gap-3">
-                  <MiniStat label="Total orders" value={String(report.totalOrders)} />
-                  <MiniStat label="Paid orders" value={String(report.paidOrders)} />
-                  <MiniStat label="Conversion rate" value={`${report.conversionRate}%`} />
-                  <MiniStat label="Avg. order value" value={formatMoney(report.avgOrderValueMinor, currency)} />
+                  <MiniStat label={t('reports.totalOrders')} value={String(report.totalOrders)} />
+                  <MiniStat label={t('reports.paidOrders')} value={String(report.paidOrders)} />
+                  <MiniStat label={t('reports.conversionRate')} value={`${report.conversionRate}%`} />
+                  <MiniStat label={t('reports.avgOrderValue')} value={formatMoney(report.avgOrderValueMinor, currency)} />
                 </div>
               </Card>
             </div>
 
             {/* Service sales summary table */}
             <Card>
-              <CardHeader icon={<IconFile width={20} height={20} />} title="Service Sales Summary" />
+              <CardHeader icon={<IconFile width={20} height={20} />} title={t('reports.serviceSalesSummary')} />
               <div className="mt-4">
                 {/* Desktop table */}
                 <div className="hidden overflow-x-auto lg:block">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-blush-soft text-left text-xs uppercase tracking-wide text-ink-muted">
-                        <th className="pb-3 font-semibold">Service</th>
-                        <th className="pb-3 font-semibold text-right">Paid orders</th>
-                        <th className="pb-3 font-semibold text-right">Gross ({currency})</th>
-                        <th className="pb-3 font-semibold text-right">Discounts ({currency})</th>
-                        <th className="pb-3 font-semibold text-right">Refunds ({currency})</th>
-                        <th className="pb-3 font-semibold text-right">Net ({currency})</th>
+                        <th className="pb-3 font-semibold">{t('reports.service')}</th>
+                        <th className="pb-3 font-semibold text-right">{t('reports.thPaidOrders')}</th>
+                        <th className="pb-3 font-semibold text-right">{t('reports.thGross')} ({currency})</th>
+                        <th className="pb-3 font-semibold text-right">{t('reports.thDiscounts')} ({currency})</th>
+                        <th className="pb-3 font-semibold text-right">{t('reports.thRefunds')} ({currency})</th>
+                        <th className="pb-3 font-semibold text-right">{t('reports.thNet')} ({currency})</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-blush-soft">
@@ -234,7 +236,7 @@ export default function ReportsPage() {
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-blush-deep/40 font-semibold text-plum">
-                        <td className="py-3">Total</td>
+                        <td className="py-3">{t('common.total')}</td>
                         <td className="py-3 text-right">{report.paidOrders}</td>
                         <td className="py-3 text-right">{formatMoney(report.grossMinor, currency, { withSymbol: false })}</td>
                         <td className="py-3 text-right">{formatMoney(report.discountsMinor, currency, { withSymbol: false })}</td>
@@ -254,16 +256,16 @@ export default function ReportsPage() {
                         <span className="font-semibold text-primary">{formatMoney(r.netMinor, currency)}</span>
                       </div>
                       <p className="mt-1 text-xs text-ink-soft">
-                        {r.paidOrders} paid orders · Gross {formatMoney(r.grossMinor, currency)}
+                        {r.paidOrders} {t('reports.paidOrdersLower')} · {t('reports.thGross')} {formatMoney(r.grossMinor, currency)}
                       </p>
                       <p className="text-xs text-ink-soft">
-                        Discounts {formatMoney(r.discountsMinor, currency)} · Refunds {formatMoney(r.refundsMinor, currency)}
+                        {t('reports.thDiscounts')} {formatMoney(r.discountsMinor, currency)} · {t('reports.thRefunds')} {formatMoney(r.refundsMinor, currency)}
                       </p>
                     </li>
                   ))}
                   <li className="rounded-2xl bg-blush-soft p-3 font-semibold text-plum">
                     <div className="flex items-center justify-between">
-                      <span>Total net ({currency})</span>
+                      <span>{t('reports.totalNet')} ({currency})</span>
                       <span>{formatMoney(report.netMinor, currency)}</span>
                     </div>
                   </li>
@@ -273,13 +275,13 @@ export default function ReportsPage() {
 
             {/* Report information */}
             <Card>
-              <CardHeader icon={<IconInfo width={20} height={20} />} title="Report Information" />
+              <CardHeader icon={<IconInfo width={20} height={20} />} title={t('reports.reportInformation')} />
               <dl className="mt-4 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-                <InfoRow label="Date range" value={rangeLabel} />
-                <InfoRow label="Currency" value={`${currency} (${currency === 'MYR' ? 'Malaysian Ringgit' : 'Chinese Yuan'})`} />
-                <InfoRow label="Service" value={serviceId === 'all' ? 'All services' : services.find((s) => s.id === serviceId)?.name ?? '—'} />
-                <InfoRow label="Generated by" value="Admin (demo)" />
-                <InfoRow label="Data" value="Demonstration data — not real sales" />
+                <InfoRow label={t('reports.dateRange')} value={rangeLabel} />
+                <InfoRow label={t('reports.currency')} value={`${currency} (${currency === 'MYR' ? t('reports.myr') : t('reports.cny')})`} />
+                <InfoRow label={t('reports.service')} value={serviceId === 'all' ? t('common.allServices') : services.find((s) => s.id === serviceId)?.name ?? '—'} />
+                <InfoRow label={t('reports.generatedBy')} value={t('reports.adminDemo')} />
+                <InfoRow label={t('reports.dataLabel')} value={t('reports.dataDemo')} />
               </dl>
             </Card>
           </>

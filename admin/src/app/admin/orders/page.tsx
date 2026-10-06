@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import type { CurrencyCode, Guardian, Order, Service } from '@/types';
+import type { CurrencyCode, Guardian, Order, Service, StaffOption } from '@/types';
 import { formatMoney } from '@/lib/money';
 import { formatDateTime } from '@/lib/format';
 import { downloadCsv } from '@/lib/csv';
@@ -19,6 +19,7 @@ import { ImageSlot } from '@/components/admin/ImageSlot';
 import { Pagination } from '@/components/admin/Pagination';
 import { EmptyState, LoadingRows } from '@/components/admin/States';
 import { useToast } from '@/components/ui/Toast';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 import {
   IconSearch,
   IconCalendar,
@@ -38,6 +39,7 @@ interface Filters {
   fulfillmentStatus: string;
   serviceId: string;
   guardianId: string;
+  assignedStaffId: string;
   currency: string;
 }
 
@@ -49,11 +51,13 @@ const DEFAULT_FILTERS: Filters = {
   fulfillmentStatus: 'all',
   serviceId: 'all',
   guardianId: 'all',
+  assignedStaffId: 'all',
   currency: 'all',
 };
 
 export default function OrdersPage() {
   const { notify } = useToast();
+  const { t } = useI18n();
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<Order[]>([]);
@@ -63,36 +67,49 @@ export default function OrdersPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [services, setServices] = useState<Service[]>([]);
   const [guardians, setGuardians] = useState<Guardian[]>([]);
+  const [staff, setStaff] = useState<StaffOption[]>([]);
 
   useEffect(() => {
     api.listServices({ perPage: 999 }).then((r) => setServices(r.data));
     api.listGuardians().then(setGuardians);
+    api.listStaff().then(setStaff);
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const query = {
-      search: filters.search,
-      dateFrom: filters.dateFrom,
-      dateTo: filters.dateTo,
-      paymentStatus: filters.paymentStatus as never,
-      fulfillmentStatus: filters.fulfillmentStatus as never,
-      serviceId: filters.serviceId,
-      guardianId: filters.guardianId,
-      currency: filters.currency as never,
-    };
-    const [pageData, allData] = await Promise.all([
-      api.listOrders({ ...query, page, perPage: PER_PAGE }),
-      api.listOrders({ ...query, perPage: 999 }),
-    ]);
-    setRows(pageData.data);
-    setTotal(pageData.total);
-    setAllFiltered(allData.data);
-    setLoading(false);
-  }, [filters, page]);
+  const load = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      const query = {
+        search: filters.search,
+        dateFrom: filters.dateFrom,
+        dateTo: filters.dateTo,
+        paymentStatus: filters.paymentStatus as never,
+        fulfillmentStatus: filters.fulfillmentStatus as never,
+        serviceId: filters.serviceId,
+        guardianId: filters.guardianId,
+        assignedStaffId: filters.assignedStaffId,
+        currency: filters.currency as never,
+      };
+      const [pageData, allData] = await Promise.all([
+        api.listOrders({ ...query, page, perPage: PER_PAGE }),
+        api.listOrders({ ...query, perPage: 999 }),
+      ]);
+      setRows(pageData.data);
+      setTotal(pageData.total);
+      setAllFiltered(allData.data);
+      setLoading(false);
+    },
+    [filters, page],
+  );
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  // Near real-time: silently re-fetch the current view so new assignments and
+  // status changes surface without a manual reload.
+  useEffect(() => {
+    const timer = setInterval(() => load(true), 20000);
+    return () => clearInterval(timer);
   }, [load]);
 
   useEffect(() => {
@@ -122,50 +139,50 @@ export default function OrdersPage() {
 
   return (
     <div>
-      <PageHeader title="Orders" subtitle="Manage and track customer orders for your Dreammy store." />
+      <PageHeader title={t('orders.title')} subtitle={t('orders.subtitle')} />
 
       {/* Filters */}
       <Card>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             leftIcon={<IconSearch width={18} height={18} />}
-            placeholder="Search by order ID or traveler name…"
+            placeholder={t('orders.searchPlaceholder')}
             value={filters.search}
             onChange={(e) => setFilter('search', e.target.value)}
-            aria-label="Search orders"
+            aria-label={t('orders.search')}
           />
           <div className="flex items-center gap-2">
-            <Input type="date" value={filters.dateFrom} onChange={(e) => setFilter('dateFrom', e.target.value)} aria-label="Date from" leftIcon={<IconCalendar width={18} height={18} />} />
+            <Input type="date" value={filters.dateFrom} onChange={(e) => setFilter('dateFrom', e.target.value)} aria-label={t('orders.dateFrom')} leftIcon={<IconCalendar width={18} height={18} />} />
             <span className="text-ink-muted">–</span>
-            <Input type="date" value={filters.dateTo} onChange={(e) => setFilter('dateTo', e.target.value)} aria-label="Date to" />
+            <Input type="date" value={filters.dateTo} onChange={(e) => setFilter('dateTo', e.target.value)} aria-label={t('orders.dateTo')} />
           </div>
         </div>
 
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <label className="block">
-            <span className="field-label">Payment status</span>
+            <span className="field-label">{t('orders.paymentStatus')}</span>
             <Select value={filters.paymentStatus} onChange={(e) => setFilter('paymentStatus', e.target.value)}>
-              <option value="all">All</option>
-              <option value="paid">Paid</option>
-              <option value="pending">Pending</option>
-              <option value="refunded">Refunded</option>
+              <option value="all">{t('common.all')}</option>
+              <option value="paid">{t('payment.paid')}</option>
+              <option value="pending">{t('payment.pending')}</option>
+              <option value="refunded">{t('payment.refunded')}</option>
             </Select>
           </label>
           <label className="block">
-            <span className="field-label">Fulfillment status</span>
+            <span className="field-label">{t('orders.fulfillmentStatus')}</span>
             <Select value={filters.fulfillmentStatus} onChange={(e) => setFilter('fulfillmentStatus', e.target.value)}>
-              <option value="all">All</option>
-              <option value="pending">Pending</option>
-              <option value="awaiting_guardian">Awaiting Guardian</option>
-              <option value="in_progress">In progress</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
+              <option value="all">{t('common.all')}</option>
+              <option value="pending">{t('fulfillment.pending')}</option>
+              <option value="awaiting_guardian">{t('fulfillment.awaiting_guardian')}</option>
+              <option value="in_progress">{t('fulfillment.in_progress')}</option>
+              <option value="completed">{t('fulfillment.completed')}</option>
+              <option value="cancelled">{t('fulfillment.cancelled')}</option>
             </Select>
           </label>
           <label className="block">
-            <span className="field-label">Service</span>
+            <span className="field-label">{t('orders.service')}</span>
             <Select value={filters.serviceId} onChange={(e) => setFilter('serviceId', e.target.value)}>
-              <option value="all">All services</option>
+              <option value="all">{t('common.allServices')}</option>
               {services.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
@@ -174,9 +191,9 @@ export default function OrdersPage() {
             </Select>
           </label>
           <label className="block">
-            <span className="field-label">Guardian</span>
+            <span className="field-label">{t('orders.guardian')}</span>
             <Select value={filters.guardianId} onChange={(e) => setFilter('guardianId', e.target.value)}>
-              <option value="all">All guardians</option>
+              <option value="all">{t('orders.allGuardians')}</option>
               {guardians.map((g) => (
                 <option key={g.id} value={g.id}>
                   {g.name}
@@ -185,19 +202,31 @@ export default function OrdersPage() {
             </Select>
           </label>
           <label className="block">
-            <span className="field-label">Currency</span>
+            <span className="field-label">{t('orders.assignedTo')}</span>
+            <Select value={filters.assignedStaffId} onChange={(e) => setFilter('assignedStaffId', e.target.value)}>
+              <option value="all">{t('orders.allStaff')}</option>
+              <option value="unassigned">{t('orders.unassigned')}</option>
+              {staff.map((s) => (
+                <option key={s.userId} value={s.userId}>
+                  {s.email}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="block">
+            <span className="field-label">{t('orders.currency')}</span>
             <Select value={filters.currency} onChange={(e) => setFilter('currency', e.target.value)}>
-              <option value="all">All currencies</option>
+              <option value="all">{t('common.all')}</option>
               <option value="MYR">MYR (RM)</option>
               <option value="CNY">CNY (¥)</option>
             </Select>
           </label>
           <div className="flex items-end gap-2">
             <Button variant="outline" block onClick={() => setFilters(DEFAULT_FILTERS)}>
-              Reset filters
+              {t('orders.resetFilters')}
             </Button>
-            <Button block onClick={load}>
-              <IconSearch width={18} height={18} /> Search
+            <Button block onClick={() => load()}>
+              <IconSearch width={18} height={18} /> {t('orders.searchBtn')}
             </Button>
           </div>
         </div>
@@ -206,14 +235,14 @@ export default function OrdersPage() {
       {/* Order list */}
       <Card className="mt-5">
         <div className="flex items-center justify-between">
-          <h2 className="font-display text-lg text-plum">Order list ({total})</h2>
+          <h2 className="font-display text-lg text-plum">{t('orders.orderList')} ({total})</h2>
         </div>
 
         <div className="mt-4">
           {loading ? (
             <LoadingRows />
           ) : rows.length === 0 ? (
-            <EmptyState icon={IconClipboard} title="No orders match your filters" description="Try widening the date range or clearing some filters." action={<Button size="sm" variant="outline" onClick={() => setFilters(DEFAULT_FILTERS)}>Reset filters</Button>} />
+            <EmptyState icon={IconClipboard} title={t('orders.noMatch')} description={t('orders.noMatchDesc')} action={<Button size="sm" variant="outline" onClick={() => setFilters(DEFAULT_FILTERS)}>{t('orders.resetFilters')}</Button>} />
           ) : (
             <>
               {/* Desktop table */}
@@ -222,17 +251,18 @@ export default function OrdersPage() {
                   <thead>
                     <tr className="border-b border-blush-soft text-left text-xs uppercase tracking-wide text-ink-muted">
                       <th className="w-8 pb-3">
-                        <input type="checkbox" aria-label="Select all" checked={allOnPageSelected} onChange={toggleAll} className="h-4 w-4 accent-primary" />
+                        <input type="checkbox" aria-label={t('orders.selectAll')} checked={allOnPageSelected} onChange={toggleAll} className="h-4 w-4 accent-primary" />
                       </th>
-                      <th className="pb-3 font-semibold">Order ID</th>
-                      <th className="pb-3 font-semibold">Traveler</th>
-                      <th className="pb-3 font-semibold">Service</th>
-                      <th className="pb-3 font-semibold">Guardian</th>
-                      <th className="pb-3 font-semibold">Total</th>
-                      <th className="pb-3 font-semibold">Payment</th>
-                      <th className="pb-3 font-semibold">Fulfillment</th>
-                      <th className="pb-3 font-semibold">Created</th>
-                      <th className="pb-3 font-semibold text-right">View</th>
+                      <th className="pb-3 font-semibold">{t('orders.thOrderId')}</th>
+                      <th className="pb-3 font-semibold">{t('orders.thTraveler')}</th>
+                      <th className="pb-3 font-semibold">{t('orders.thService')}</th>
+                      <th className="pb-3 font-semibold">{t('orders.thGuardian')}</th>
+                      <th className="pb-3 font-semibold">{t('orders.thAssignedTo')}</th>
+                      <th className="pb-3 font-semibold">{t('orders.thTotal')}</th>
+                      <th className="pb-3 font-semibold">{t('orders.thPayment')}</th>
+                      <th className="pb-3 font-semibold">{t('orders.thFulfillment')}</th>
+                      <th className="pb-3 font-semibold">{t('orders.thCreated')}</th>
+                      <th className="pb-3 font-semibold text-right">{t('orders.thView')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-blush-soft">
@@ -256,6 +286,7 @@ export default function OrdersPage() {
                           </div>
                         </td>
                         <td className="py-3 text-ink-soft">{o.guardianName ?? '—'}</td>
+                        <td className="py-3 text-ink-soft">{o.assignment?.staffEmail ?? t('orders.unassigned')}</td>
                         <td className="py-3 font-medium text-ink">{formatMoney(o.amountMinor, o.currency)}</td>
                         <td className="py-3"><PaymentBadge status={o.paymentStatus} /></td>
                         <td className="py-3"><FulfillmentBadge status={o.fulfillmentStatus} /></td>
@@ -288,7 +319,8 @@ export default function OrdersPage() {
                           <ImageSlot imageKey={o.serviceImageKey} ratio="1 / 1" rounded="rounded-lg" className="h-8 w-8 flex-shrink-0" alt={o.serviceName} />
                           <span className="truncate text-sm text-ink-soft">{o.serviceName}</span>
                         </div>
-                        <p className="mt-1 text-xs text-ink-soft">Guardian: {o.guardianName ?? '—'}</p>
+                        <p className="mt-1 text-xs text-ink-soft">{t('orders.guardian')}: {o.guardianName ?? '—'}</p>
+                        <p className="text-xs text-ink-soft">{t('orders.assignedTo')}: {o.assignment?.staffEmail ?? t('orders.unassigned')}</p>
                         <div className="mt-2 flex items-center justify-between gap-2">
                           <span className="font-semibold text-ink">{formatMoney(o.amountMinor, o.currency)}</span>
                           <span className="flex gap-1.5">
@@ -316,7 +348,7 @@ export default function OrdersPage() {
         selectedIds={selected}
         dateFrom={filters.dateFrom}
         dateTo={filters.dateTo}
-        onDownloaded={(n) => notify(`Exported ${n} demo order(s) to CSV.`)}
+        onDownloaded={(n) => notify(`${t('orders.exportedPrefix')} ${n} ${t('orders.exportedSuffix')}`)}
       />
     </div>
   );
@@ -335,6 +367,7 @@ function OrdersExport({
   dateTo: string;
   onDownloaded: (count: number) => void;
 }) {
+  const { t } = useI18n();
   const [scope, setScope] = useState<'all' | 'selected'>('all');
   const [columns, setColumns] = useState<string[]>(
     ORDER_EXPORT_COLUMNS.filter((c) => c.default).map((c) => c.key),
@@ -376,9 +409,9 @@ function OrdersExport({
           <IconDownload width={18} height={18} />
         </span>
         <div>
-          <h2 className="font-display text-lg text-plum">Export orders to CSV</h2>
+          <h2 className="font-display text-lg text-plum">{t('orders.exportTitle')}</h2>
           <p className="text-sm text-ink-soft">
-            Export order data based on your current filters. The exported file will include all orders matching the filters above, or only the selected orders.
+            {t('orders.exportIntro')}
           </p>
         </div>
       </div>
@@ -386,26 +419,26 @@ function OrdersExport({
       <div className="mt-4 flex items-start gap-2 rounded-2xl bg-info-soft p-3 text-sm text-info">
         <IconInfo width={18} height={18} className="mt-0.5 flex-shrink-0" />
         <p>
-          Export follows your current filters. Currently {filtered.length} order(s) match your filters. Records are <strong>demo data</strong> — not real orders.
+          {t('orders.exportFollowsPrefix')} {filtered.length} {t('orders.exportFollowsSuffix')} <strong>{t('orders.demoData')}</strong> {t('orders.notReal')}
         </p>
       </div>
 
       {/* Scope */}
       <div className="mt-4">
-        <span className="field-label">Export scope</span>
+        <span className="field-label">{t('orders.exportScope')}</span>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3 ${scope === 'all' ? 'border-primary bg-primary-soft/50' : 'border-blush-deep/40'}`}>
             <input type="radio" name="scope" checked={scope === 'all'} onChange={() => setScope('all')} className="mt-1 h-4 w-4 accent-primary" />
             <span>
-              <span className="block text-sm font-semibold text-plum">All filtered orders ({filtered.length})</span>
-              <span className="block text-xs text-ink-soft">Export all orders that match your current filters.</span>
+              <span className="block text-sm font-semibold text-plum">{t('orders.allFiltered')} ({filtered.length})</span>
+              <span className="block text-xs text-ink-soft">{t('orders.allFilteredDesc')}</span>
             </span>
           </label>
           <label className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3 ${scope === 'selected' ? 'border-primary bg-primary-soft/50' : 'border-blush-deep/40'}`}>
             <input type="radio" name="scope" checked={scope === 'selected'} onChange={() => setScope('selected')} className="mt-1 h-4 w-4 accent-primary" />
             <span>
-              <span className="block text-sm font-semibold text-plum">Selected orders ({selectedIds.size})</span>
-              <span className="block text-xs text-ink-soft">Export only the selected orders from the table.</span>
+              <span className="block text-sm font-semibold text-plum">{t('orders.selectedOrders')} ({selectedIds.size})</span>
+              <span className="block text-xs text-ink-soft">{t('orders.selectedOrdersDesc')}</span>
             </span>
           </label>
         </div>
@@ -413,17 +446,17 @@ function OrdersExport({
 
       {/* Date range display */}
       <div className="mt-4">
-        <span className="field-label">Date range (from filters)</span>
+        <span className="field-label">{t('orders.dateRangeFilters')}</span>
         <div className="rounded-2xl border border-blush-soft bg-cream-deep/40 px-3.5 py-3 text-sm text-ink-soft">
           {dateFrom} – {dateTo}
-          <span className="ml-2 text-xs text-ink-muted">This export includes orders in this range matching your filters.</span>
+          <span className="ml-2 text-xs text-ink-muted">{t('orders.dateRangeNote')}</span>
         </div>
       </div>
 
       {/* Column picker */}
       <div className="mt-4">
-        <span className="field-label">Select columns to include</span>
-        <p className="field-hint mb-2">Choose which fields to include in the exported CSV file.</p>
+        <span className="field-label">{t('orders.selectColumns')}</span>
+        <p className="field-hint mb-2">{t('orders.selectColumnsDesc')}</p>
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
           {nonContactColumns.map((col) => (
             <label key={col.key} className="inline-flex items-center gap-2 text-sm text-ink">
@@ -438,26 +471,26 @@ function OrdersExport({
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="flex items-start justify-between gap-3 rounded-2xl border border-blush-soft p-3">
           <div>
-            <p className="text-sm font-semibold text-plum">Include customer contact details</p>
-            <p className="text-xs text-ink-soft">Include traveler email and other contact information in the export file.</p>
+            <p className="text-sm font-semibold text-plum">{t('orders.includeContact')}</p>
+            <p className="text-xs text-ink-soft">{t('orders.includeContactDesc')}</p>
           </div>
-          <Toggle checked={includeContact} onChange={setIncludeContact} label="Include contact details" />
+          <Toggle checked={includeContact} onChange={setIncludeContact} label={t('orders.includeContactLabel')} />
         </div>
         <div>
-          <span className="field-label">File format</span>
+          <span className="field-label">{t('orders.fileFormat')}</span>
           <Select defaultValue="utf8">
             <option value="utf8">CSV (UTF-8)</option>
           </Select>
-          <p className="field-hint">Recommended for Excel, Google Sheets and most tools.</p>
+          <p className="field-hint">{t('orders.fileFormatDesc')}</p>
         </div>
       </div>
 
       <div className="mt-5 flex flex-col items-center gap-2 sm:flex-row sm:justify-end">
         <p className="text-xs text-ink-muted sm:mr-auto">
-          {exportOrders.length} order(s) will be exported (based on current filters).
+          {exportOrders.length} {t('orders.willExport')}
         </p>
         <Button onClick={handleDownload} disabled={exportOrders.length === 0}>
-          <IconDownload width={18} height={18} /> Download CSV
+          <IconDownload width={18} height={18} /> {t('orders.downloadCsv')}
         </Button>
       </div>
     </Card>

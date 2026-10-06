@@ -3,19 +3,34 @@
 The **admin management app** for Dreammy — manage Sky game services, orders, vouchers and reports.
 It is a standalone Next.js app that lives beside the existing Laravel customer site.
 
-Repo layout (two sibling apps):
-- `../customer/` — **Laravel customer site + future API** (`cd customer && php artisan serve`). Untouched by this app.
-- `../admin/` (this folder) — **Next.js admin frontend**. Talks only to a replaceable mock API.
+Repo layout (two sibling apps sharing ONE Supabase Postgres database):
+- `../customer/` — **Laravel customer site** (`cd customer && php artisan serve`). Reads the shared DB directly via `pgsql`.
+- `../admin/` (this folder) — **Next.js admin frontend**. Reads/writes the shared DB via Supabase.
 
-> **Demo mode.** Every screen runs on in-memory mock data. No real payments, refunds, uploads,
-> authentication or database writes happen. Image-upload fields are **local previews only**.
+> **Live data.** The admin is backed by Supabase. Services published here (status `active`) appear on
+> the customer catalogue; image uploads go to Supabase Storage. The customer app reads the same tables.
 
 ## Stack
 
 - Next.js 15 (App Router) + React 19 + TypeScript
 - Tailwind CSS v3 (Dreammy design tokens ported from the root `tailwind.config.js`)
 - Recharts for charts
-- No backend calls — a mock `AdminApi` adapter stands in for Laravel
+- `@supabase/supabase-js` — reached only through server-only route handlers (see Architecture)
+
+## Environment
+
+Copy `.env.example` → `.env.local` and fill in your Supabase keys:
+
+| Var | Scope | Notes |
+|-----|-------|-------|
+| `NEXT_PUBLIC_SUPABASE_URL` | public | `https://<ref>.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public | publishable key |
+| `SUPABASE_SECRET_KEY` | **server-only** | service_role / secret key. NEVER prefix with `NEXT_PUBLIC`. Used only in `src/app/api/admin/**`. |
+| `SUPABASE_SERVICE_IMAGES_BUCKET` | server | defaults to `service-images` (auto-created, public) |
+| `SUPABASE_ORDER_SCREENSHOTS_BUCKET` | server | defaults to `order-screenshots` (auto-created, public) |
+
+The database schema is owned by the Laravel migrations in `../customer/database/migrations`; run those
+against Supabase first (see `../customer` and the project plan). This app never runs migrations.
 
 ## Run
 
@@ -57,50 +72,78 @@ src/
   components/
     admin/…        shell (sidebar/header/bottom-nav), StatCard, tables, charts, ImageSlot, …
     ui/…           Button, Input, Select, Dialog, Toast, Badge, … (design-system primitives)
+  app/api/admin/…  server-only route handlers (talk to Supabase with the secret key)
   lib/
-    api/           AdminApi interface + mockAdapter + index (swap point) + BACKEND.md
-    mock/          typed seed data — single source of truth for all pages
+    api/           AdminApi interface + httpAdapter (index swap point) + server/db.ts + mappers.ts
+    supabase/      server.ts — server-only Supabase client (secret key)
+    upload.ts      client helper: POST file → /api/admin/upload → Supabase Storage URL
     exports/       CSV builders for orders & reports
     money.ts csv.ts format.ts images.ts cn.ts
   types/           Service, Voucher, Order, Guardian, Transaction, Report, Dashboard
 public/images/dreammy/{brand,avatars,services,backgrounds,decorations}/  + ASSET-MANIFEST.md
 ```
 
-### Data & money
+### Data flow & security
 
-- All money is stored as **integer minor units** (`{ minor, currency }`) and formatted only for
-  display. **MYR and CNY are always kept separate.**
-- Pages read data exclusively through `api` (`src/lib/api`). No mock records are embedded in
-  components, so replacing the adapter is a one-line change.
+Pages (`'use client'`) call the `api` facade (`src/lib/api`). `api` is the `httpAdapter`, which
+`fetch`es `/api/admin/**` route handlers. Those handlers run **on the server** and use
+`src/lib/supabase/server.ts` (the **secret key**) via `src/lib/api/server/db.ts`. Because the secret
+client is `import 'server-only'`, it can never be bundled into the browser.
+
+```
+page.tsx → api (httpAdapter) → /api/admin/* route handler → db.ts → Supabase (secret key)
+```
+
+- Column mapping (snake_case DB ↔ camelCase types) lives in `src/lib/api/mappers.ts`.
+- All money is **integer minor units** (`{ minor, currency }`); **MYR and CNY are kept separate.**
+- Swapping the data source is still a one-line change in `src/lib/api/index.ts`.
 
 ### Images
 
-All artwork areas are **empty reserved slots** (`ImageSlot`) that hold the correct aspect ratio and
-never show a broken-image icon. Drop files into `public/images/dreammy/**` per `ASSET-MANIFEST.md`
-and they appear automatically. Nothing is generated or fetched remotely.
+`ImageSlot` reserves the aspect ratio and never shows a broken icon. Uploaded service images and
+order screenshots are stored in Supabase Storage (public buckets, auto-created on first upload) and
+`image_key` holds the full public URL — `src/lib/images.ts#assetPath` passes `http(s)` URLs through
+untouched.
 
-## Connecting the real Laravel API
+## Authentication & roles (RBAC)
 
-See [`src/lib/api/BACKEND.md`](src/lib/api/BACKEND.md) for the full endpoint → method map and payload
-shapes. In short:
+The admin is gated by **Supabase Auth** (`middleware.ts`): every `/admin` page redirects to `/login`
+when signed out, and every `/api/admin/*` route returns `401`. Admin team members are Supabase
+`auth.users`, tracked in the `team_members` table with a **role**:
 
-1. Implement the `AdminApi` interface with `fetch` calls to Laravel (shapes already match `src/types`).
-2. Swap the export in `src/lib/api/index.ts`:
-   ```ts
-   export const api: AdminApi = httpAdapter; // was mockAdapter
+| Role | Access |
+|------|--------|
+| owner | Everything incl. managing the team (Settings → Team). |
+| admin | Everything except team management. |
+| manager | Create/edit services, vouchers, orders. |
+| viewer | Read-only. |
+
+Server enforcement lives in `src/lib/auth/session.ts` (`requireRole`) + `src/lib/auth/roles.ts`;
+mutating routes use `handleWithRole(MUTATE_ROLES, …)`. Invitations (Settings → Team, owner only) call
+Supabase `inviteUserByEmail` (cloud-sends the email) and also show a **copyable invite link**.
+
+### First-time setup
+
+1. **Supabase dashboard → Auth → URL Configuration**: set **Site URL** `http://localhost:3100` and add
+   redirect URL `http://localhost:3100/admin/../auth/callback` → i.e. `http://localhost:3100/auth/callback`.
+   (For email invites to send, configure **SMTP** under Auth → Email; the copyable link works without it.)
+2. **Bootstrap the first owner** (nobody can invite until one exists):
+   ```bash
+   # Direct password (works immediately, no email/SMTP needed):
+   npm run invite-owner -- you@example.com "YourPassword123"
+   # …or invite by email + copyable link:
+   npm run invite-owner -- you@example.com
    ```
-3. No page/component changes required. The Laravel API lives in `../customer/` (root routes in
-   `customer/routes/`); add the `/api/admin/*` endpoints there.
+3. Sign in at `http://localhost:3100/login`, then invite the rest of the team from **Settings**.
 
-**Security:** the `/admin` routes and any frontend role check are **not** security. The Laravel API
-must authenticate and authorize every admin request server-side. Keep Firebase service-account keys
-and other secrets out of this frontend entirely.
+## Security notes / follow-ups
+
+- Rotate the Supabase keys + any bootstrap password if they were shared in plaintext.
+- The secret key stays server-only. Optionally enable Postgres RLS to further lock the anon key
+  (the customer app reads via direct Postgres and bypasses RLS).
 
 ## Known limitations
 
-- Backend + Firebase are **not** wired — everything is mock/in-memory and resets on reload.
-- Uploads are local object-URL previews only (no storage).
-- PDF export uses the browser's **print-to-PDF** (Save as PDF in the print dialog); a print
-  stylesheet hides the app chrome and prints the report area. CSV is the primary real export.
-- Dashboard/report aggregate figures represent a full period; the Orders list is a curated recent
-  subset of that period (documented in `src/lib/mock/orders.ts`).
+- Orders/guardians exist in the shared DB but there is no customer checkout flow yet, so the
+  Orders/Reports/Dashboard screens are empty until orders are created.
+- PDF export uses the browser's **print-to-PDF**; CSV is the primary real export.

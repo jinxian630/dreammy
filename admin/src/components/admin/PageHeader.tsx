@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { DemoBadge } from './DemoBadge';
+import { IS_DEMO } from '@/lib/api';
 
 export interface PageHeaderProps {
   title: string;
@@ -8,7 +9,7 @@ export interface PageHeaderProps {
   actions?: ReactNode;
 }
 
-export function PageHeader({ title, subtitle, demo = true, actions }: PageHeaderProps) {
+export function PageHeader({ title, subtitle, demo = IS_DEMO, actions }: PageHeaderProps) {
   return (
     <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div>
