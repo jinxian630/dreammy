@@ -7,6 +7,9 @@
 export type Lang = 'en' | 'zh';
 
 export const en = {
+  // ---- Common ----
+  'common.loading': 'Loading…',
+
   // ---- Navigation ----
   'nav.overview': 'Overview',
   'nav.services': 'Services',
@@ -81,6 +84,7 @@ export const en = {
 
   // ---- Service categories / durations ----
   'category.candle-runs': 'Candle Runs',
+  'category.taxi-services': 'Taxi Services',
   'category.hearts': 'Hearts',
   'category.seasonal': 'Seasonal',
   'category.companions': 'Companions',
@@ -542,6 +546,9 @@ export const en = {
 export type TKey = keyof typeof en;
 
 export const zh: Record<TKey, string> = {
+  // ---- Common ----
+  'common.loading': '加载中…',
+
   // ---- Navigation ----
   'nav.overview': '概览',
   'nav.services': '服务',
@@ -615,7 +622,8 @@ export const zh: Record<TKey, string> = {
   'fulfillment.cancelled': '已取消',
 
   // ---- Service categories / durations ----
-  'category.candle-runs': '蜡烛跑',
+  'category.candle-runs': '登录代跑',
+  'category.taxi-services': '拉手带跑',
   'category.hearts': '爱心',
   'category.seasonal': '季节活动',
   'category.companions': '同伴',

@@ -33,6 +33,39 @@ export function Skeleton({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded-xl bg-blush-soft/80', className)} />;
 }
 
+/** Spinning loader ring. Inherits color via `currentColor` (defaults to brand primary). */
+export function Spinner({ size = 24, className }: { size?: number; className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      role="status"
+      aria-label="Loading"
+      className={cn('animate-spin text-primary', className)}
+    >
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity={0.2} strokeWidth={3} />
+      <path
+        d="M22 12a10 10 0 0 0-10-10"
+        stroke="currentColor"
+        strokeWidth={3}
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/** Centered full-height loading state for whole-page / system loading moments. */
+export function LoadingScreen({ label }: { label?: string }) {
+  return (
+    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-center">
+      <Spinner size={36} />
+      {label && <p className="text-sm text-ink-soft">{label}</p>}
+    </div>
+  );
+}
+
 export function LoadingRows({ rows = 5 }: { rows?: number }) {
   return (
     <div className="space-y-3 py-2">

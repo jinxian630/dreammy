@@ -45,6 +45,7 @@ class DemoSeeder extends Seeder
     {
         $defs = [
             'candle-runs' => 'Candle Runs',
+            'taxi-services' => 'Taxi Services',
             'hearts' => 'Hearts',
             'seasons' => 'Seasons',
             'companions' => 'Companions',

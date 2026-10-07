@@ -4,6 +4,8 @@ import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCurrentMember } from '@/lib/auth/useCurrentMember';
 import { canViewPath, homePathForRole } from '@/lib/auth/roles';
+import { useI18n } from '@/lib/i18n/I18nProvider';
+import { LoadingScreen } from '@/components/admin/States';
 
 /**
  * Client-side route guard. Keeps guardians (Order Status only) out of pages they
@@ -14,6 +16,7 @@ export function AccessGuard({ children }: { children: React.ReactNode }) {
   const { member, loading } = useCurrentMember();
   const pathname = usePathname();
   const router = useRouter();
+  const { t } = useI18n();
 
   const blocked = member !== null && !canViewPath(member.role, pathname);
 
@@ -25,7 +28,7 @@ export function AccessGuard({ children }: { children: React.ReactNode }) {
   // (e.g. the dashboard) would mount and fire its gated fetch — a 403 — during
   // the brief window before the redirect lands. The layout stays mounted across
   // client navigations, so this only costs one /api/admin/me wait per full load.
-  if (loading) return null;
+  if (loading) return <LoadingScreen label={t('common.loading')} />;
   if (blocked) return null;
   return <>{children}</>;
 }

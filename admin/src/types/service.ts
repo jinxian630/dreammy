@@ -5,6 +5,7 @@ export type ServiceStatus = 'active' | 'draft' | 'archived';
 /** Service category slug (Sky game service groupings). */
 export type ServiceCategory =
   | 'candle-runs'
+  | 'taxi-services'
   | 'hearts'
   | 'seasonal'
   | 'companions'
@@ -12,6 +13,7 @@ export type ServiceCategory =
 
 export const SERVICE_CATEGORY_LABELS: Record<ServiceCategory, string> = {
   'candle-runs': 'Candle Runs',
+  'taxi-services': 'Taxi Services',
   hearts: 'Hearts',
   seasonal: 'Seasonal',
   companions: 'Companions',

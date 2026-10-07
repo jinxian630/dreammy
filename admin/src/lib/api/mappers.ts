@@ -24,6 +24,7 @@ import type { VoucherWithStatus } from './AdminApi';
 
 const VALID_CATEGORIES: ServiceCategory[] = [
   'candle-runs',
+  'taxi-services',
   'hearts',
   'seasonal',
   'companions',
