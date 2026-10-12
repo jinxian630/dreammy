@@ -41,7 +41,7 @@ class ProfileSettings extends Component
             'displayName' => ['required', 'string', 'min:2', 'max:50'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
             'language' => ['required', 'in:en,ms,zh'],
-            'currency' => ['required', 'in:MYR,RMB'],
+            'currency' => ['required', 'in:MYR,CNY'],
         ]);
 
         $user->update([
@@ -51,6 +51,9 @@ class ProfileSettings extends Component
             'language' => $validated['language'],
             'currency' => $validated['currency'],
         ]);
+
+        // Keep the header currency toggle in sync with the saved preference.
+        session(['currency' => $validated['currency']]);
 
         session()->flash('success', 'Your profile has been saved.');
     }

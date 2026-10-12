@@ -26,7 +26,6 @@ class HomeController extends Controller
             'user' => $user,
             'currentOrder' => $currentOrder,
             'services' => $services,
-            'walletMinor' => $user?->walletBalanceMinor() ?? 0,
             'points' => $user?->star_points ?? 0,
         ]);
     }

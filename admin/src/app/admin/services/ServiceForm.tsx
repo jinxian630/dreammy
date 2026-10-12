@@ -9,6 +9,7 @@ import type {
   ServiceDuration,
   ServiceInput,
   ServiceOption,
+  ServicePackage,
   ServerRegion,
 } from '@/types';
 import { SERVICE_CATEGORY_LABELS, SERVICE_DURATION_LABELS } from '@/types';
@@ -53,12 +54,23 @@ interface FormState {
   server: ServerRegion;
   duration: ServiceDuration;
   options: ServiceOption[];
+  packages: PackageForm[];
   preferredTime: string;
   priceMajor: string;
+  priceMajorCny: string;
   currency: CurrencyCode;
   estimatedCompletion: string;
   status: 'active' | 'draft';
   customerInstructions: string;
+}
+
+/** Package as edited in the form (prices held as major-unit strings). */
+interface PackageForm {
+  key: string;
+  name: string;
+  priceMajor: string;
+  priceCnyMajor: string;
+  description: string;
 }
 
 function toFormState(service?: Service): FormState {
@@ -72,8 +84,18 @@ function toFormState(service?: Service): FormState {
     server: service?.server ?? 'global',
     duration: service?.duration ?? '1d',
     options: service?.options ? structuredClone(service.options) : [],
+    packages:
+      service?.packages?.map((p) => ({
+        key: p.key,
+        name: p.name,
+        priceMajor: String(toMajor(p.priceMinor)),
+        priceCnyMajor: p.priceCnyMinor != null ? String(toMajor(p.priceCnyMinor)) : '',
+        description: p.description,
+      })) ?? [],
     preferredTime: service?.preferredTime ?? '',
     priceMajor: service ? String(toMajor(service.priceMinor)) : '',
+    priceMajorCny:
+      service && service.priceCnyMinor != null ? String(toMajor(service.priceCnyMinor)) : '',
     currency: service?.currency ?? 'MYR',
     estimatedCompletion: service?.estimatedCompletion ?? '1 day',
     status: service?.status === 'draft' ? 'draft' : 'active',
@@ -95,6 +117,11 @@ export function ServiceForm({ service }: { service?: Service }) {
   }
 
   const priceMinor = useMemo(() => toMinor(form.priceMajor || '0'), [form.priceMajor]);
+  // Blank China price → null (service has no CNY price and can't be ordered in CNY).
+  const priceCnyMinor = useMemo(
+    () => (form.priceMajorCny.trim() ? toMinor(form.priceMajorCny) : null),
+    [form.priceMajorCny],
+  );
 
   function validate(): boolean {
     const next: Record<string, string> = {};
@@ -129,11 +156,21 @@ export function ServiceForm({ service }: { service?: Service }) {
       description: form.description.trim(),
       priceMinor,
       currency: form.currency,
+      priceCnyMinor,
       imageKey,
       status,
       server: form.server,
       duration: form.duration,
       options: form.options.filter((o) => o.label.trim() && o.values.length > 0),
+      packages: form.packages
+        .filter((p) => p.name.trim() && p.priceMajor.trim())
+        .map<ServicePackage>((p) => ({
+          key: p.key,
+          name: p.name.trim(),
+          priceMinor: toMinor(p.priceMajor),
+          priceCnyMinor: p.priceCnyMajor.trim() ? toMinor(p.priceCnyMajor) : null,
+          description: p.description.trim(),
+        })),
       preferredTime: form.preferredTime.trim() || null,
       estimatedCompletion: form.estimatedCompletion.trim(),
       customerInstructions: form.customerInstructions.trim(),
@@ -164,6 +201,23 @@ export function ServiceForm({ service }: { service?: Service }) {
   }
   function removeOption(idx: number) {
     set('options', form.options.filter((_, i) => i !== idx));
+  }
+
+  // ---- package helpers ----
+  function addPackage() {
+    set('packages', [
+      ...form.packages,
+      { key: `pkg-${Date.now()}`, name: '', priceMajor: '', priceCnyMajor: '', description: '' },
+    ]);
+  }
+  function updatePackage(idx: number, patch: Partial<PackageForm>) {
+    set(
+      'packages',
+      form.packages.map((p, i) => (i === idx ? { ...p, ...patch } : p)),
+    );
+  }
+  function removePackage(idx: number) {
+    set('packages', form.packages.filter((_, i) => i !== idx));
   }
 
   const previewImageKey = form.imagePreview ?? form.imageKey;
@@ -325,15 +379,56 @@ export function ServiceForm({ service }: { service?: Service }) {
           <Card>
             <CardHeader icon={<IconCoins width={20} height={20} />} title={t('sf.pricing')} subtitle={t('sf.pricingSub')} />
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label={t('sf.basePrice')} required htmlFor="price" error={errors.price} hint={t('sf.basePriceHint')}>
+              <Field label={t('sf.priceMyr')} required htmlFor="price" error={errors.price} hint={t('sf.basePriceHint')}>
                 <Input id="price" inputMode="decimal" value={form.priceMajor} invalid={!!errors.price} onChange={(e) => set('priceMajor', e.target.value)} placeholder="8.00" />
               </Field>
-              <Field label={t('sf.currency')} htmlFor="currency">
-                <Select id="currency" value={form.currency} onChange={(e) => set('currency', e.target.value as CurrencyCode)}>
-                  <option value="MYR">MYR (RM)</option>
-                  <option value="CNY">CNY (¥)</option>
-                </Select>
+              <Field label={t('sf.priceCny')} htmlFor="priceCny" hint={t('sf.priceCnyHint')}>
+                <Input id="priceCny" inputMode="decimal" value={form.priceMajorCny} onChange={(e) => set('priceMajorCny', e.target.value)} placeholder="12.00" />
               </Field>
+            </div>
+          </Card>
+
+          {/* Packages */}
+          <Card>
+            <CardHeader icon={<IconCoins width={20} height={20} />} title={t('sf.packages')} subtitle={t('sf.packagesSub')} />
+            <div className="mt-2">
+              <div className="flex items-center justify-between">
+                <span className="field-label mb-0">{t('sf.packagesLabel')}</span>
+                <Button variant="ghost" size="sm" onClick={addPackage}>
+                  <IconPlus width={16} height={16} /> {t('sf.addPackage')}
+                </Button>
+              </div>
+              {form.packages.length === 0 ? (
+                <p className="field-hint">{t('sf.noPackages')}</p>
+              ) : (
+                <div className="mt-2 space-y-3">
+                  {form.packages.map((pkg, idx) => (
+                    <div key={pkg.key} className="rounded-2xl border border-blush-soft bg-surface-soft p-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <Field label={t('sf.packageName')} htmlFor={`pkg-name-${idx}`}>
+                          <Input id={`pkg-name-${idx}`} value={pkg.name} onChange={(e) => updatePackage(idx, { name: e.target.value })} placeholder={t('sf.packageNamePh')} />
+                        </Field>
+                        <Field label={t('sf.packageDesc')} htmlFor={`pkg-desc-${idx}`}>
+                          <Input id={`pkg-desc-${idx}`} value={pkg.description} onChange={(e) => updatePackage(idx, { description: e.target.value })} placeholder={t('sf.packageDescPh')} />
+                        </Field>
+                      </div>
+                      <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <Field label={t('sf.priceMyr')} htmlFor={`pkg-price-${idx}`}>
+                          <Input id={`pkg-price-${idx}`} inputMode="decimal" value={pkg.priceMajor} onChange={(e) => updatePackage(idx, { priceMajor: e.target.value })} placeholder="8.00" />
+                        </Field>
+                        <Field label={t('sf.priceCny')} htmlFor={`pkg-pricecny-${idx}`}>
+                          <Input id={`pkg-pricecny-${idx}`} inputMode="decimal" value={pkg.priceCnyMajor} onChange={(e) => updatePackage(idx, { priceCnyMajor: e.target.value })} placeholder="12.00" />
+                        </Field>
+                      </div>
+                      <div className="mt-2 flex justify-end">
+                        <Button variant="danger" size="sm" onClick={() => removePackage(idx)}>
+                          <IconTrash width={15} height={15} /> {t('sf.removePackage')}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </Card>
 
@@ -390,10 +485,15 @@ export function ServiceForm({ service }: { service?: Service }) {
                 </Badge>
               </div>
               <h3 className="mt-3 font-display text-xl text-plum">{form.name || t('sf.serviceNameFallback')}</h3>
-              <div className="mt-1 flex items-center gap-2">
+              <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span className="font-display text-lg font-semibold text-primary">
-                  {formatMoney(priceMinor, form.currency)}
+                  {formatMoney(priceMinor, 'MYR')}
                 </span>
+                {priceCnyMinor != null && (
+                  <span className="font-display text-lg font-semibold text-plum">
+                    {formatMoney(priceCnyMinor, 'CNY')}
+                  </span>
+                )}
                 <Badge tone={form.status === 'active' ? 'success' : 'warn'}>
                   {form.status === 'active' ? t('serviceStatus.active') : t('serviceStatus.draft')}
                 </Badge>

@@ -8,6 +8,7 @@ use App\Domain\Pricing\PricingService;
 use App\Models\Order;
 use App\Models\Service;
 use App\Models\User;
+use App\Support\Currency;
 use Illuminate\Support\Facades\DB;
 
 class OrderService
@@ -19,18 +20,33 @@ class OrderService
      *
      * @param  array<string,mixed>  $selections
      */
-    public function createDraft(User $user, Service $service, array $selections): Order
+    public function createDraft(User $user, Service $service, array $selections, ?string $currency = null, int $quantity = 1, ?string $packageKey = null): Order
     {
+        // The chosen display currency locks onto the order. The unit price honours
+        // the selected package when the service has packages, else the base price.
+        $currency = $currency ? strtoupper($currency) : Currency::MYR;
+        $basePrice = Currency::unitPriceMinor($service, $packageKey, $currency);
+        if ($basePrice === null) {
+            // No price in the requested currency → fall back to MYR.
+            $currency = Currency::MYR;
+            $basePrice = Currency::unitPriceMinor($service, $packageKey, $currency) ?? $service->price_minor;
+        }
+
+        $qty = max(1, min(99, $quantity));
         $schema = $service->config_schema ?? [];
         $clean = $this->pricing->normalise($schema, $selections);
-        $total = $this->pricing->total($schema, $service->price_minor, $clean, $service->currency);
+        $clean['quantity'] = $qty; // recorded for the order summary
+        if ($package = $service->findPackage($packageKey)) {
+            $clean['package'] = $package['name'] ?? null;
+        }
+        $total = $this->pricing->total($schema, $basePrice, $clean, $currency)->times($qty);
 
         $isRepurchase = $user->orders()
             ->where('service_id', $service->id)
             ->whereIn('status', ['awaiting_guardian', 'in_progress', 'completed'])
             ->exists();
 
-        return DB::transaction(function () use ($user, $service, $clean, $total, $isRepurchase) {
+        return DB::transaction(function () use ($user, $service, $clean, $total, $currency, $isRepurchase) {
             $order = new Order([
                 'order_code' => $this->allocateCode($isRepurchase),
                 'service_id' => $service->id,
@@ -39,7 +55,7 @@ class OrderService
                 'service_image_key' => $service->image_key,
                 'status' => \App\Enums\OrderStatus::Draft,
                 'amount_minor' => $total->minor,
-                'currency' => $service->currency,
+                'currency' => $currency,
                 'config' => $clean,
                 'contact_name' => $user->displayName(),
                 'progress_target' => (int) ($clean['target'] ?? 0),

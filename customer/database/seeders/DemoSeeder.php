@@ -407,7 +407,7 @@ class DemoSeeder extends Seeder
             ['How do I track my order?', 'Go to My Orders and open any order to see its live status, journey timeline and progress updates.'],
             ['Can I change or cancel my order?', 'While an order is still awaiting a Guardian, contact support and we will help you adjust or cancel it.'],
             ['How do refunds work?', 'If something goes wrong, our team reviews the order and may issue a full, partial or wallet refund depending on the situation.'],
-            ['What payment methods are accepted?', 'You can pay with your Dream Wallet, online banking or e-wallet at checkout.'],
+            ['What payment methods are accepted?', 'You can pay with Touch ’n Go eWallet (RM) or Alipay (¥) at checkout, depending on your selected currency.'],
             ['How do I keep my account safe?', 'Enable two-step verification, review your active sessions regularly and never share your password.'],
         ];
 

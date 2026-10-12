@@ -63,7 +63,7 @@
                             <label class="mb-1.5 block text-sm font-medium text-plum">Preferred currency</label>
                             <select wire:model="currency" class="field rounded-2xl">
                                 <option value="MYR">MYR (Malaysian Ringgit)</option>
-                                <option value="RMB">RMB (Chinese Yuan)</option>
+                                <option value="CNY">CNY (Chinese Yuan)</option>
                             </select>
                         </div>
                     </div>

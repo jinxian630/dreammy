@@ -9,7 +9,7 @@ class Service extends Model
 {
     protected $fillable = [
         'slug', 'name', 'tagline', 'description', 'category_id', 'price_minor',
-        'currency', 'image_key', 'rating', 'reviews_count', 'is_popular',
+        'currency', 'price_cny_minor', 'packages', 'image_key', 'rating', 'reviews_count', 'is_popular',
         'is_active', 'inclusions', 'config_schema', 'sort',
         // Admin-managed fields (see 2026_07_02_000001 migration)
         'status', 'server', 'duration', 'options', 'preferred_time',
@@ -18,6 +18,8 @@ class Service extends Model
 
     protected $casts = [
         'price_minor' => 'integer',
+        'price_cny_minor' => 'integer',
+        'packages' => 'array',
         'reviews_count' => 'integer',
         'rating' => 'float',
         'is_popular' => 'boolean',
@@ -36,5 +38,32 @@ class Service extends Model
     public function getRouteKeyName(): string
     {
         return 'slug';
+    }
+
+    /** @return array<int,array{key:string,name:string,price_minor:int,price_cny_minor:?int,description:?string}> */
+    public function packageList(): array
+    {
+        return is_array($this->packages) ? array_values($this->packages) : [];
+    }
+
+    public function hasPackages(): bool
+    {
+        return count($this->packageList()) > 0;
+    }
+
+    /** Find a package by key, falling back to the first one. Null if none exist. */
+    public function findPackage(?string $key): ?array
+    {
+        $packages = $this->packageList();
+        if (! $packages) {
+            return null;
+        }
+        foreach ($packages as $p) {
+            if (($p['key'] ?? null) === $key) {
+                return $p;
+            }
+        }
+
+        return $packages[0];
     }
 }

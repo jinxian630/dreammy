@@ -49,10 +49,10 @@
         </section>
 
         @auth
-            {{-- Current journey + wallet + points --}}
+            {{-- Current journey + points --}}
             <section>
                 <x-section-heading title="Your current journey" accent="Good things take time" />
-                <div class="grid grid-cols-1 gap-5 lg:grid-cols-4">
+                <div class="grid grid-cols-1 gap-5 lg:grid-cols-3">
                     <div class="card p-5 lg:col-span-2">
                         @if ($currentOrder)
                             <div class="flex items-start gap-4">
@@ -88,15 +88,6 @@
                                 <a href="{{ route('services.index') }}" class="btn-primary mt-2 px-4 py-2 text-xs">Explore services <x-icon name="arrow-right" class="h-4 w-4" /></a>
                             </div>
                         @endif
-                    </div>
-
-                    <div class="card flex flex-col justify-between p-5">
-                        <div class="flex items-center gap-3">
-                            <span class="grid h-11 w-11 place-items-center rounded-2xl bg-gold-soft text-gold-deep"><x-icon name="bag" class="h-5 w-5" /></span>
-                            <div><p class="font-display font-semibold text-plum">Dream Wallet</p></div>
-                        </div>
-                        <p class="mt-3 font-display text-2xl font-semibold text-plum"><x-money :minor="$walletMinor" /></p>
-                        <a href="{{ route('wallet.index') }}" class="btn-outline mt-3 px-4 py-2 text-xs">Top up <x-icon name="arrow-right" class="h-4 w-4" /></a>
                     </div>
 
                     <div class="card flex flex-col justify-between p-5">

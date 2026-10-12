@@ -63,16 +63,11 @@
         <div class="grid gap-6 lg:grid-cols-3 lg:items-start">
             {{-- Details (order-2 on mobile, left on desktop) --}}
             <div class="order-2 space-y-4 lg:order-1 lg:col-span-1">
-                <x-collapsible title="Service Inclusions" icon="check-circle" :open="true">
-                    <ul class="space-y-2">
-                        @foreach ($service->inclusions ?? [] as $item)
-                            <li class="flex items-start gap-2 text-sm text-ink-soft">
-                                <x-icon name="check-circle" class="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                                <span>{{ $item }}</span>
-                            </li>
-                        @endforeach
-                    </ul>
-                </x-collapsible>
+                @if (filled($service->customer_instructions))
+                    <x-collapsible title="Before You Order" icon="document" :open="true">
+                        <p class="whitespace-pre-line text-sm text-ink-soft">{{ $service->customer_instructions }}</p>
+                    </x-collapsible>
+                @endif
 
                 <x-collapsible title="How It Works" icon="sparkle" :open="true">
                     <ol class="space-y-4">

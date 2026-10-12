@@ -9,6 +9,7 @@ import type {
   ServiceCategory,
   ServiceInput,
   ServiceOption,
+  ServicePackage,
   ServiceStatus,
   Voucher,
   VoucherInput,
@@ -52,18 +53,49 @@ export interface ServiceRow {
   category?: { slug: string } | null;
   price_minor: number;
   currency: string;
+  price_cny_minor: number | null;
   image_key: string | null;
   status: string | null;
   is_active: boolean;
   server: string | null;
   duration: string | null;
   options: ServiceOption[] | null;
+  packages: PackageRow[] | null;
   preferred_time: string | null;
   estimated_completion: string | null;
   customer_instructions: string | null;
   orders_count: number | null;
   created_at: string | null;
   updated_at: string | null;
+}
+
+/** Package shape as stored in the shared `services.packages` JSON (snake_case). */
+interface PackageRow {
+  key: string;
+  name: string;
+  price_minor: number;
+  price_cny_minor: number | null;
+  description?: string | null;
+}
+
+function rowToPackage(p: PackageRow): ServicePackage {
+  return {
+    key: p.key,
+    name: p.name,
+    priceMinor: p.price_minor ?? 0,
+    priceCnyMinor: p.price_cny_minor ?? null,
+    description: p.description ?? '',
+  };
+}
+
+function packageToRow(p: ServicePackage): PackageRow {
+  return {
+    key: p.key,
+    name: p.name,
+    price_minor: p.priceMinor,
+    price_cny_minor: p.priceCnyMinor,
+    description: p.description,
+  };
 }
 
 export function rowToService(row: ServiceRow): Service {
@@ -76,11 +108,13 @@ export function rowToService(row: ServiceRow): Service {
     description: row.description ?? '',
     priceMinor: row.price_minor ?? 0,
     currency: (row.currency as CurrencyCode) ?? 'MYR',
+    priceCnyMinor: row.price_cny_minor ?? null,
     imageKey: row.image_key,
     status,
     server: (row.server as Service['server']) ?? 'global',
     duration: (row.duration as Service['duration']) ?? '1d',
     options: Array.isArray(row.options) ? row.options : [],
+    packages: Array.isArray(row.packages) ? row.packages.map(rowToPackage) : [],
     preferredTime: row.preferred_time,
     estimatedCompletion: row.estimated_completion ?? '',
     customerInstructions: row.customer_instructions ?? '',
@@ -101,6 +135,7 @@ export function serviceInputToRow(
     category_id: categoryId,
     price_minor: input.priceMinor,
     currency: input.currency,
+    price_cny_minor: input.priceCnyMinor,
     image_key: input.imageKey,
     status: input.status,
     // Keep the customer catalogue's is_active flag in sync with admin status.
@@ -108,6 +143,7 @@ export function serviceInputToRow(
     server: input.server,
     duration: input.duration,
     options: input.options,
+    packages: input.packages.map(packageToRow),
     preferred_time: input.preferredTime,
     estimated_completion: input.estimatedCompletion,
     customer_instructions: input.customerInstructions,

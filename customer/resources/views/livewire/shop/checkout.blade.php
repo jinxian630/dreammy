@@ -1,9 +1,9 @@
 @php
-    $methods = [
-        ['value' => 'dream_wallet', 'icon' => 'wallet', 'title' => 'Dream Wallet', 'desc' => 'Your current balance. Will be deducted after payment.'],
-        ['value' => 'online_banking', 'icon' => 'bank', 'title' => 'Online Banking', 'desc' => 'Pay securely via your bank.'],
-        ['value' => 'ewallet', 'icon' => 'card', 'title' => 'E-wallet', 'desc' => "Touch 'n Go eWallet, GrabPay and more."],
-    ];
+    // Payment method is fixed by the order currency: MYR → Touch 'n Go, CNY → Alipay.
+    $methods = $order->currency === 'CNY'
+        ? [['value' => 'alipay', 'icon' => 'card', 'title' => 'Alipay', 'desc' => 'Pay in ¥ with Alipay.']]
+        : [['value' => 'tng', 'icon' => 'card', 'title' => "Touch 'n Go eWallet", 'desc' => 'Pay in RM with TNG eWallet.']];
+    $orderSymbol = \App\Support\Currency::symbol($order->currency);
 @endphp
 
 <div>
@@ -68,16 +68,9 @@
                                 <input type="radio" wire:model.live="paymentMethod" value="{{ $m['value'] }}" class="text-primary focus:ring-primary/40">
                                 <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blush text-primary"><x-icon :name="$m['icon']" class="h-5 w-5" /></span>
                                 <span class="min-w-0 flex-1">
-                                    <span class="flex items-center justify-between gap-2">
-                                        <span class="font-semibold text-plum">{{ $m['title'] }}</span>
-                                        @if ($m['value'] === 'dream_wallet')
-                                            <span class="text-sm font-semibold text-plum"><x-money :minor="$walletMinor" /></span>
-                                        @endif
-                                    </span>
+                                    <span class="font-semibold text-plum">{{ $m['title'] }}</span>
                                     <span class="block text-xs text-ink-soft">{{ $m['desc'] }}</span>
-                                    @if ($m['value'] !== 'dream_wallet')
-                                        <span class="mt-1 inline-block rounded-full bg-warn-soft px-2 py-0.5 text-[10px] font-semibold text-warn">Dev mock — no real gateway</span>
-                                    @endif
+                                    <span class="mt-1 inline-block rounded-full bg-warn-soft px-2 py-0.5 text-[10px] font-semibold text-warn">Dev mock — no real gateway</span>
                                 </span>
                             </label>
                         @endforeach
@@ -101,26 +94,13 @@
                     <x-section-heading icon="document" title="Order Total" />
                     <div class="space-y-2 text-sm">
                         <div class="flex items-center justify-between text-ink-soft">
-                            <span>Service price</span><span><x-money :minor="$order->amount_minor" /></span>
+                            <span>Service price</span><span><x-money :minor="$order->amount_minor" :symbol="$orderSymbol" /></span>
                         </div>
                         <div class="flex items-center justify-between rounded-2xl bg-blush-soft px-3 py-2.5">
                             <span class="font-semibold text-plum">Total Payment</span>
-                            <span class="font-display text-xl font-semibold text-primary"><x-money :minor="$order->amount_minor" /></span>
+                            <span class="font-display text-xl font-semibold text-primary"><x-money :minor="$order->amount_minor" :symbol="$orderSymbol" /></span>
                         </div>
-                        @if ($paymentMethod === 'dream_wallet')
-                            <div class="flex items-center justify-between text-ink-soft">
-                                <span>Remaining Dream Wallet balance</span>
-                                <span class="{{ $remainingMinor < 0 ? 'text-primary' : '' }}"><x-money :minor="max($remainingMinor, 0)" /></span>
-                            </div>
-                        @endif
                     </div>
-
-                    @if ($insufficient)
-                        <div class="mt-3 flex items-center justify-between gap-2 rounded-2xl border border-warn/30 bg-warn-soft px-3 py-2.5 text-xs text-warn">
-                            <span>Not enough wallet balance for this order.</span>
-                            <a href="{{ route('wallet.index') }}" class="font-semibold underline">Top up</a>
-                        </div>
-                    @endif
 
                     <label class="mt-4 flex items-start gap-2 text-sm text-ink-soft">
                         <input type="checkbox" wire:model.live="agree" class="mt-0.5 rounded border-blush-deep text-primary focus:ring-primary/40">
@@ -129,10 +109,9 @@
                     @error('agree') <p class="mt-1 text-sm text-primary">{{ $message }}</p> @enderror
 
                     <button type="button" wire:click="pay" wire:loading.attr="disabled"
-                            @disabled($insufficient)
                             class="btn-primary mt-4 w-full py-4 text-base">
                         <x-icon name="lock" class="h-4 w-4" />
-                        <span wire:loading.remove wire:target="pay">Pay <x-money :minor="$order->amount_minor" /> <x-icon name="arrow-right" class="h-4 w-4" /></span>
+                        <span wire:loading.remove wire:target="pay">Pay <x-money :minor="$order->amount_minor" :symbol="$orderSymbol" /> <x-icon name="arrow-right" class="h-4 w-4" /></span>
                         <span wire:loading wire:target="pay">Processing…</span>
                     </button>
                     <p class="mt-3 flex items-center justify-center gap-1.5 text-xs text-ink-muted"><x-icon name="lock" class="h-3.5 w-3.5" /> Secure payment. Your information is protected.</p>

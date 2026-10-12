@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Enums\OrderStatus;
 use App\Livewire\Account\ProfileSettings;
 use App\Livewire\Account\RewardsCenter;
-use App\Livewire\Account\WalletManager;
 use App\Livewire\Shop\Checkout;
 use App\Livewire\Shop\ServiceConfigurator;
 use App\Livewire\Support\ContactForm;
@@ -46,10 +45,9 @@ class JourneyTest extends TestCase
 
         $draft = Order::where('user_id', $user->id)->where('status', OrderStatus::Draft)->latest('id')->firstOrFail();
 
-        // Checkout → pay with wallet → confirmation
+        // Checkout → pay (MYR order → Touch 'n Go) → confirmation
         Livewire::actingAs($user)->test(Checkout::class, ['order' => $draft])
             ->set('agree', true)
-            ->set('paymentMethod', 'dream_wallet')
             ->call('pay')
             ->assertRedirect(route('orders.confirmed', $draft));
 
@@ -68,34 +66,6 @@ class JourneyTest extends TestCase
             ->assertHasErrors(['agree']);
 
         $this->assertSame(OrderStatus::Draft, $draft->fresh()->status);
-    }
-
-    public function test_wallet_mock_topup_credits_balance(): void
-    {
-        $user = $this->demoUser();
-        $before = $user->walletBalanceMinor();
-
-        Livewire::actingAs($user)->test(WalletManager::class)
-            ->set('preset', 30)
-            ->set('custom', '')
-            ->set('method', 'online_banking')
-            ->call('topUp');
-
-        $this->assertSame($before + 3000, $user->fresh()->walletBalanceMinor());
-    }
-
-    public function test_wallet_topup_rejects_tiny_amount(): void
-    {
-        $user = $this->demoUser();
-        $before = $user->walletBalanceMinor();
-
-        Livewire::actingAs($user)->test(WalletManager::class)
-            ->set('preset', null)
-            ->set('custom', '0')
-            ->call('topUp')
-            ->assertHasErrors(['custom']);
-
-        $this->assertSame($before, $user->fresh()->walletBalanceMinor());
     }
 
     public function test_rewards_redeem_deducts_points_via_component(): void
@@ -132,7 +102,7 @@ class JourneyTest extends TestCase
             ->set('displayName', 'Luna the Kind')
             ->set('email', 'luna.kind@example.com')
             ->set('language', 'zh')
-            ->set('currency', 'RMB')
+            ->set('currency', 'CNY')
             ->call('save')
             ->assertHasNoErrors();
 
@@ -140,6 +110,7 @@ class JourneyTest extends TestCase
         $this->assertSame('Luna the Kind', $user->display_name);
         $this->assertSame('luna.kind@example.com', $user->email);
         $this->assertSame('zh', $user->language);
+        $this->assertSame('CNY', $user->currency);
     }
 
     public function test_profile_rejects_invalid_email(): void

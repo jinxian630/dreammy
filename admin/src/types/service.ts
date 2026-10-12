@@ -34,9 +34,11 @@ export interface Service {
   name: string;
   category: ServiceCategory;
   description: string;
-  /** Base price in integer minor units. */
+  /** Malaysia (MYR) base price in integer minor units. */
   priceMinor: number;
   currency: CurrencyCode;
+  /** Optional China (CNY) price in integer minor units; null when not set. */
+  priceCnyMinor: number | null;
   /** Key resolved through `src/lib/images.ts`; empty slot when the file is absent. */
   imageKey: string | null;
   status: ServiceStatus;
@@ -44,6 +46,8 @@ export interface Service {
   duration: ServiceDuration;
   /** Configurable game options (e.g. target candles), each with selectable values. */
   options: ServiceOption[];
+  /** Purchasable packages/tiers; when present the customer picks one to set the price. */
+  packages: ServicePackage[];
   /** Preferred-time hint shown to customers (optional). */
   preferredTime: string | null;
   /** Estimated completion time label, e.g. "1 day". */
@@ -62,6 +66,16 @@ export interface ServiceOption {
   defaultValue: string;
 }
 
+/** A purchasable package/tier. When a service has packages, the chosen one's
+ *  price becomes the unit price. `priceCnyMinor` is optional (null = no ¥). */
+export interface ServicePackage {
+  key: string;
+  name: string;
+  priceMinor: number;
+  priceCnyMinor: number | null;
+  description: string;
+}
+
 /** Payload accepted by create/update — server-managed fields omitted. */
 export interface ServiceInput {
   name: string;
@@ -69,11 +83,13 @@ export interface ServiceInput {
   description: string;
   priceMinor: number;
   currency: CurrencyCode;
+  priceCnyMinor: number | null;
   imageKey: string | null;
   status: Exclude<ServiceStatus, 'archived'>;
   server: ServerRegion;
   duration: ServiceDuration;
   options: ServiceOption[];
+  packages: ServicePackage[];
   preferredTime: string | null;
   estimatedCompletion: string;
   customerInstructions: string;

@@ -3,13 +3,11 @@
 namespace Tests\Feature;
 
 use App\Enums\OrderStatus;
-use App\Exceptions\InsufficientFundsException;
 use App\Exceptions\InsufficientPointsException;
 use App\Models\Order;
 use App\Models\RewardItem;
 use App\Models\Service;
 use App\Models\User;
-use App\Models\WalletTransaction;
 use App\Services\OrderService;
 use App\Services\PaymentService;
 use App\Services\PointsService;
@@ -35,7 +33,6 @@ class OrderFlowTest extends TestCase
     public function test_guest_is_redirected_from_protected_pages(): void
     {
         $this->get('/orders')->assertRedirect(route('login'));
-        $this->get('/wallet')->assertRedirect(route('login'));
         $this->get('/rewards')->assertRedirect(route('login'));
         $this->get('/profile')->assertRedirect(route('login'));
     }
@@ -53,7 +50,6 @@ class OrderFlowTest extends TestCase
         $order = Order::where('order_code', 'DM-1024')->firstOrFail();
 
         $this->actingAs($user)->get('/orders')->assertOk();
-        $this->actingAs($user)->get('/wallet')->assertOk();
         $this->actingAs($user)->get('/rewards')->assertOk();
         $this->actingAs($user)->get('/profile')->assertOk();
         $this->actingAs($user)->get(route('orders.show', $order))->assertOk();
@@ -84,31 +80,27 @@ class OrderFlowTest extends TestCase
         $this->assertSame(OrderStatus::Draft, $order->status);
     }
 
-    public function test_wallet_payment_debits_once_and_is_idempotent(): void
+    public function test_payment_transitions_once_and_is_idempotent(): void
     {
         $user = $this->demoUser();
         $service = Service::where('slug', 'daily-candle-run')->firstOrFail();
         $order = app(OrderService::class)->createDraft($user, $service, ['server' => 'global', 'plan' => 'one_day', 'target' => '15', 'guardian_pref' => 'any']);
 
-        $before = $user->walletBalanceMinor();
         $payments = app(PaymentService::class);
+        $payments->pay($order, PaymentService::METHOD_TNG);
+        $paidAt = $order->fresh()->paid_at;
 
-        $payments->pay($order, PaymentService::METHOD_WALLET);
-        $payments->pay($order->fresh(), PaymentService::METHOD_WALLET); // second call = no-op
+        $payments->pay($order->fresh(), PaymentService::METHOD_TNG); // second call = no-op
 
-        $this->assertSame($before - $order->amount_minor, $user->fresh()->walletBalanceMinor());
-        $this->assertSame(1, WalletTransaction::where('order_id', $order->id)->where('type', 'payment')->count());
         $this->assertSame(OrderStatus::AwaitingGuardian, $order->fresh()->status);
+        $this->assertSame(PaymentService::METHOD_TNG, $order->fresh()->payment_method);
+        $this->assertEquals($paidAt, $order->fresh()->paid_at); // paid_at unchanged on replay
     }
 
-    public function test_wallet_payment_rejects_insufficient_funds(): void
+    public function test_alipay_method_resolves_for_cny_orders(): void
     {
-        $user = User::factory()->create(['currency' => 'MYR']);
-        $service = Service::where('slug', 'seasonal-care')->firstOrFail();
-        $order = app(OrderService::class)->createDraft($user, $service, ['server' => 'global', 'plan' => 'one_day', 'guardian_pref' => 'any']);
-
-        $this->expectException(InsufficientFundsException::class);
-        app(PaymentService::class)->pay($order, PaymentService::METHOD_WALLET);
+        $this->assertSame(PaymentService::METHOD_ALIPAY, PaymentService::methodForCurrency('CNY'));
+        $this->assertSame(PaymentService::METHOD_TNG, PaymentService::methodForCurrency('MYR'));
     }
 
     public function test_paying_awards_points(): void
@@ -118,7 +110,7 @@ class OrderFlowTest extends TestCase
         $order = app(OrderService::class)->createDraft($user, $service, ['server' => 'global', 'plan' => 'one_day', 'target' => '15', 'guardian_pref' => 'any']);
 
         $pointsBefore = $user->star_points;
-        app(PaymentService::class)->pay($order, PaymentService::METHOD_WALLET);
+        app(PaymentService::class)->pay($order, PaymentService::METHOD_TNG);
 
         // 1 sen = 1 point → amount_minor points awarded
         $this->assertSame($pointsBefore + $order->amount_minor, $user->fresh()->star_points);

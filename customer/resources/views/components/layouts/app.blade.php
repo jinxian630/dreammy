@@ -2,8 +2,8 @@
 
 @php
     $user = auth()->user();
-    $walletMinor = $user?->walletBalanceMinor() ?? 0;
     $points = $user?->star_points ?? 0;
+    $cartCount = app(\App\Services\CartService::class)->count();
 
     $navLinks = [
         ['label' => 'Home', 'route' => 'home', 'active' => 'home'],
@@ -53,11 +53,9 @@
                 @endforeach
             </nav>
             <div class="flex items-center gap-3">
+                <x-currency-switch />
+                <x-cart-link :count="$cartCount" />
                 @auth
-                    <a href="{{ route('wallet.index') }}" class="inline-flex items-center gap-2 rounded-full border border-gold/40 bg-white px-4 py-2 text-sm font-semibold text-plum shadow-soft">
-                        <x-icon name="bag" class="h-4 w-4 text-gold-deep" />
-                        <x-money :minor="$walletMinor" />
-                    </a>
                     <a href="{{ route('help.index') }}" class="relative grid h-11 w-11 place-items-center rounded-full border border-blush bg-white text-plum hover:text-primary" aria-label="Notifications">
                         <x-icon name="bell" class="h-5 w-5" />
                         <span class="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-primary"></span>
@@ -79,7 +77,6 @@
                         <div id="account-dropdown" x-show="open" x-transition x-cloak @click.outside="open = false"
                              class="absolute right-0 mt-2 w-52 overflow-hidden rounded-2xl border border-blush bg-white py-2 shadow-lift">
                             <a href="{{ route('profile.show') }}" class="block px-4 py-2 text-sm text-ink-soft hover:bg-blush-soft hover:text-primary">My Profile</a>
-                            <a href="{{ route('wallet.index') }}" class="block px-4 py-2 text-sm text-ink-soft hover:bg-blush-soft hover:text-primary">Dream Wallet</a>
                             <a href="{{ route('help.index') }}" class="block px-4 py-2 text-sm text-ink-soft hover:bg-blush-soft hover:text-primary">Help &amp; Security</a>
                             <form method="POST" action="{{ route('logout') }}">
                                 @csrf
@@ -104,11 +101,9 @@
                 </button>
                 <x-brand :compact="true" />
                 <div class="flex items-center gap-2">
+                    <x-currency-switch />
+                    <x-cart-link :count="$cartCount" size="h-9 w-9" />
                     @auth
-                        <a href="{{ route('wallet.index') }}" class="inline-flex items-center gap-1.5 rounded-full border border-gold/40 bg-white px-2.5 py-1.5 text-xs font-semibold text-plum">
-                            <x-icon name="bag" class="h-3.5 w-3.5 text-gold-deep" />
-                            <x-money :minor="$walletMinor" />
-                        </a>
                         <a href="{{ route('help.index') }}" class="relative grid h-9 w-9 place-items-center rounded-full border border-blush bg-white text-plum" aria-label="Notifications">
                             <x-icon name="bell" class="h-5 w-5" />
                             <span class="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-primary"></span>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import type { Service, ServiceStatus } from '@/types';
@@ -29,9 +29,10 @@ import {
   IconChart,
   IconSearch,
   IconPlus,
-  IconMoreVertical,
   IconEdit,
   IconTrash,
+  IconChevronLeft,
+  IconRefresh,
 } from '@/components/ui/icons';
 
 const PER_PAGE = 10;
@@ -57,8 +58,9 @@ export default function ServicesPage() {
   const [orderStats, setOrderStats] = useState<{ total: number; delta: number }>({ total: 0, delta: 0 });
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [actionsFor, setActionsFor] = useState<string | null>(null);
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<Service | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -138,16 +140,33 @@ export default function ServicesPage() {
   }
 
   async function handleToggleStatus(service: Service) {
-    setMenuFor(null);
+    setActionsFor(null);
     const nextStatus: ServiceStatus = service.status === 'active' ? 'draft' : 'active';
     await api.setServiceStatus(service.id, nextStatus);
     notify(nextStatus === 'active' ? t('sv.servicePublished') : t('sv.serviceUnpublished'));
     load();
   }
 
-  async function handleArchiveOne(service: Service) {
-    setMenuFor(null);
-    await api.archiveServices([service.id]);
+  function handleArchiveOne(service: Service) {
+    setActionsFor(null);
+    setArchiveTarget(service);
+  }
+
+  // Un-archive: bring the service back into the catalogue as a draft so the
+  // owner can review it before publishing again.
+  async function handleRestore(service: Service) {
+    setActionsFor(null);
+    await api.setServiceStatus(service.id, 'draft');
+    notify(t('sv.serviceRestored'));
+    load();
+  }
+
+  async function confirmArchiveOne() {
+    if (!archiveTarget) return;
+    setBusy(true);
+    await api.archiveServices([archiveTarget.id]);
+    setBusy(false);
+    setArchiveTarget(null);
     notify(t('sv.serviceArchived'));
     load();
   }
@@ -163,7 +182,7 @@ export default function ServicesPage() {
   }
 
   return (
-    <div onClick={() => setMenuFor(null)}>
+    <div onClick={() => setActionsFor(null)}>
       <PageHeader title={t('sv.title')} subtitle={t('sv.subtitle')} />
 
       {/* Stat cards */}
@@ -197,6 +216,7 @@ export default function ServicesPage() {
           <option value="all">{t('common.allStatus')}</option>
           <option value="active">{t('serviceStatus.active')}</option>
           <option value="draft">{t('serviceStatus.draft')}</option>
+          <option value="archived">{t('serviceStatus.archived')}</option>
         </Select>
         <Link href="/admin/services/new">
           <Button className="w-full sm:w-auto">
@@ -262,7 +282,7 @@ export default function ServicesPage() {
                   </thead>
                   <tbody className="divide-y divide-blush-soft">
                     {rows.map((s) => (
-                      <tr key={s.id}>
+                      <SwipeRow key={s.id} onOpenChange={(v) => setActionsFor(v ? s.id : null)}>
                         <td className="py-3">
                           <input type="checkbox" aria-label={`Select ${s.name}`} checked={selected.has(s.id)} onChange={() => toggleOne(s.id)} className="h-4 w-4 accent-primary" />
                         </td>
@@ -278,24 +298,53 @@ export default function ServicesPage() {
                         <td className="py-3">
                           <Badge tone="blush">{t(`category.${s.category}` as TKey)}</Badge>
                         </td>
-                        <td className="py-3 font-medium text-ink">{formatMoney(s.priceMinor, s.currency)}</td>
+                        <td className="py-3 font-medium text-ink">
+                          <div>{formatMoney(s.priceMinor, 'MYR')}</div>
+                          {s.priceCnyMinor != null && (
+                            <div className="text-xs text-ink-muted">{formatMoney(s.priceCnyMinor, 'CNY')}</div>
+                          )}
+                        </td>
                         <td className="py-3">
                           <ServiceBadge status={s.status} />
                         </td>
                         <td className="py-3 text-ink-soft">{formatDate(s.updatedAt)}</td>
-                        <td className="py-3 text-right">
-                          <RowMenu
-                            open={menuFor === s.id}
-                            onToggle={(e) => {
-                              e.stopPropagation();
-                              setMenuFor(menuFor === s.id ? null : s.id);
-                            }}
-                            service={s}
-                            onPublishToggle={() => handleToggleStatus(s)}
-                            onArchive={() => handleArchiveOne(s)}
-                          />
+                        <td className="py-3">
+                          <div className="relative ml-auto flex h-9 items-center justify-end overflow-hidden">
+                            {/* Actions (in flow → define the column width); slide in when revealed */}
+                            <div
+                              className={`flex items-center gap-1 whitespace-nowrap transition-all duration-200 ease-out ${
+                                actionsFor === s.id ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-6 opacity-0'
+                              }`}
+                            >
+                              <Link href={`/admin/services/${s.id}/edit`} onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium text-ink-soft hover:bg-blush-soft hover:text-primary">
+                                <IconEdit width={15} height={15} /> {t('common.edit')}
+                              </Link>
+                              {s.status === 'archived' ? (
+                                <button type="button" onClick={(e) => { e.stopPropagation(); handleRestore(s); }} className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium text-ink-soft hover:bg-blush-soft hover:text-primary">
+                                  <IconRefresh width={15} height={15} /> {t('common.restore')}
+                                </button>
+                              ) : (
+                                <>
+                                  <button type="button" onClick={(e) => { e.stopPropagation(); handleToggleStatus(s); }} className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium text-ink-soft hover:bg-blush-soft hover:text-primary">
+                                    <IconChart width={15} height={15} /> {s.status === 'active' ? t('common.unpublish') : t('common.publish')}
+                                  </button>
+                                  <button type="button" onClick={(e) => { e.stopPropagation(); handleArchiveOne(s); }} className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium text-danger hover:bg-danger-soft">
+                                    <IconTrash width={15} height={15} /> {t('common.archive')}
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                            {/* Hint overlay (shown when closed; never intercepts clicks) */}
+                            <span
+                              className={`pointer-events-none absolute inset-y-0 right-0 flex select-none items-center gap-1 whitespace-nowrap text-xs text-ink-muted transition-opacity duration-200 ${
+                                actionsFor === s.id ? 'opacity-0' : 'opacity-100'
+                              }`}
+                            >
+                              <IconChevronLeft width={14} height={14} /> {t('sv.swipeActions')}
+                            </span>
+                          </div>
                         </td>
-                      </tr>
+                      </SwipeRow>
                     ))}
                   </tbody>
                 </table>
@@ -304,8 +353,8 @@ export default function ServicesPage() {
               {/* Mobile cards */}
               <ul className="space-y-3 lg:hidden">
                 {rows.map((s) => (
-                  <li key={s.id} className="rounded-2xl border border-blush-soft bg-surface-soft p-3">
-                    <div className="flex items-start gap-3">
+                  <SwipeCard key={s.id} onOpenChange={(v) => setActionsFor(v ? s.id : null)}>
+                    <div className="flex items-start gap-3 rounded-2xl border border-blush-soft bg-surface-soft p-3">
                       <input type="checkbox" aria-label={`Select ${s.name}`} checked={selected.has(s.id)} onChange={() => toggleOne(s.id)} className="mt-1 h-4 w-4 accent-primary" />
                       <ImageSlot imageKey={s.imageKey} ratio="1 / 1" rounded="rounded-xl" className="h-16 w-16 flex-shrink-0" alt={s.name} />
                       <div className="min-w-0 flex-1">
@@ -317,22 +366,44 @@ export default function ServicesPage() {
                           {t(`category.${s.category}` as TKey)}
                         </Badge>
                         <div className="mt-2 flex items-center justify-between">
-                          <span className="font-semibold text-ink">{formatMoney(s.priceMinor, s.currency)}</span>
+                          <span className="font-semibold text-ink">
+                            {formatMoney(s.priceMinor, 'MYR')}
+                            {s.priceCnyMinor != null && (
+                              <span className="ml-2 text-xs font-normal text-ink-muted">{formatMoney(s.priceCnyMinor, 'CNY')}</span>
+                            )}
+                          </span>
                           <span className="text-xs text-ink-muted">{t('sv.updatedPrefix')} {formatDate(s.updatedAt)}</span>
                         </div>
-                        <div className="mt-2 flex gap-2">
-                          <Link href={`/admin/services/${s.id}/edit`} className="flex-1">
-                            <Button variant="outline" size="sm" block>
-                              <IconEdit width={15} height={15} /> {t('common.edit')}
-                            </Button>
-                          </Link>
-                          <Button variant="secondary" size="sm" onClick={() => handleToggleStatus(s)}>
-                            {s.status === 'active' ? t('common.unpublish') : t('common.publish')}
-                          </Button>
+                        <div className="mt-2 flex items-center justify-end gap-2">
+                          {actionsFor === s.id ? (
+                            <>
+                              <Link href={`/admin/services/${s.id}/edit`} onClick={(e) => e.stopPropagation()}>
+                                <Button variant="outline" size="sm"><IconEdit width={15} height={15} /> {t('common.edit')}</Button>
+                              </Link>
+                              {s.status === 'archived' ? (
+                                <Button variant="secondary" size="sm" onClick={() => handleRestore(s)}>
+                                  <IconRefresh width={15} height={15} /> {t('common.restore')}
+                                </Button>
+                              ) : (
+                                <>
+                                  <Button variant="secondary" size="sm" onClick={() => handleToggleStatus(s)}>
+                                    {s.status === 'active' ? t('common.unpublish') : t('common.publish')}
+                                  </Button>
+                                  <Button variant="danger" size="sm" onClick={() => handleArchiveOne(s)}>
+                                    <IconTrash width={15} height={15} /> {t('common.archive')}
+                                  </Button>
+                                </>
+                              )}
+                            </>
+                          ) : (
+                            <span className="inline-flex select-none items-center gap-1 text-xs text-ink-muted">
+                              <IconChevronLeft width={14} height={14} /> {t('sv.swipeActions')}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
-                  </li>
+                  </SwipeCard>
                 ))}
               </ul>
 
@@ -354,53 +425,80 @@ export default function ServicesPage() {
         onConfirm={handleArchiveSelected}
         onCancel={() => setConfirmArchive(false)}
       />
+
+      <ConfirmDialog
+        open={archiveTarget !== null}
+        title={t('sv.confirmArchiveTitle')}
+        description={`“${archiveTarget?.name ?? ''}” ${t('sv.confirmArchiveOneSuffix')}`}
+        confirmLabel={t('common.archive')}
+        tone="danger"
+        busy={busy}
+        onConfirm={confirmArchiveOne}
+        onCancel={() => setArchiveTarget(null)}
+      />
     </div>
   );
 }
 
-function RowMenu({
-  open,
-  onToggle,
-  service,
-  onPublishToggle,
-  onArchive,
-}: {
-  open: boolean;
-  onToggle: (e: React.MouseEvent) => void;
-  service: Service;
-  onPublishToggle: () => void;
-  onArchive: () => void;
-}) {
-  const { t } = useI18n();
+/**
+ * Swipe/drag a row or card to the left to reveal its actions (Edit / Publish /
+ * Archive). Built on Pointer Events so it works with touch, pen and mouse;
+ * vertical gestures still scroll the page. `onOpenChange(true)` fires once the
+ * horizontal travel passes the trigger; swiping back closes it. A plain tap on
+ * an inner control is never treated as a swipe.
+ */
+function useSwipeToggle(onOpenChange: (open: boolean) => void) {
+  const TRIGGER = 40; // px of horizontal travel to reveal / hide
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const axis = useRef<'none' | 'h' | 'v'>('none');
+  const swiped = useRef(false);
+
+  return {
+    onPointerDown(e: React.PointerEvent) {
+      start.current = { x: e.clientX, y: e.clientY };
+      axis.current = 'none';
+      swiped.current = false;
+    },
+    onPointerMove(e: React.PointerEvent) {
+      if (!start.current) return;
+      const dx = e.clientX - start.current.x;
+      const dy = e.clientY - start.current.y;
+      if (axis.current === 'none') {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        axis.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+      }
+      if (axis.current === 'h') {
+        swiped.current = true;
+        if (dx <= -TRIGGER) onOpenChange(true);
+        else if (dx >= TRIGGER) onOpenChange(false);
+      }
+    },
+    onPointerUp() {
+      start.current = null;
+      axis.current = 'none';
+    },
+    // A swipe can emit a trailing click — swallow it so the page's outside-click
+    // handler doesn't immediately close the actions we just revealed.
+    onClick(e: React.MouseEvent) {
+      if (swiped.current) {
+        e.stopPropagation();
+        swiped.current = false;
+      }
+    },
+    style: { touchAction: 'pan-y' as const },
+  };
+}
+
+function SwipeRow({ onOpenChange, children }: { onOpenChange: (open: boolean) => void; children: React.ReactNode }) {
+  const swipe = useSwipeToggle(onOpenChange);
   return (
-    <div className="relative inline-block">
-      <button
-        type="button"
-        aria-label={t('sv.thActions')}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={onToggle}
-        className="rounded-full p-2 text-ink-soft hover:bg-blush-soft hover:text-primary"
-      >
-        <IconMoreVertical width={18} height={18} />
-      </button>
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-2xl border border-blush-soft bg-white py-1 shadow-lift"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Link href={`/admin/services/${service.id}/edit`} role="menuitem" className="flex items-center gap-2 px-4 py-2.5 text-sm text-ink hover:bg-blush-soft">
-            <IconEdit width={16} height={16} /> {t('common.edit')}
-          </Link>
-          <button role="menuitem" onClick={onPublishToggle} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-ink hover:bg-blush-soft">
-            <IconChart width={16} height={16} /> {service.status === 'active' ? t('common.unpublish') : t('common.publish')}
-          </button>
-          <button role="menuitem" onClick={onArchive} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-danger hover:bg-danger-soft">
-            <IconTrash width={16} height={16} /> {t('common.archive')}
-          </button>
-        </div>
-      )}
-    </div>
+    <tr {...swipe} style={{ ...swipe.style, cursor: 'grab' }}>
+      {children}
+    </tr>
   );
+}
+
+function SwipeCard({ onOpenChange, children }: { onOpenChange: (open: boolean) => void; children: React.ReactNode }) {
+  const swipe = useSwipeToggle(onOpenChange);
+  return <li {...swipe}>{children}</li>;
 }

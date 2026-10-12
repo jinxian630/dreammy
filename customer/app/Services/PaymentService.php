@@ -5,27 +5,32 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Enums\OrderStatus;
-use App\Enums\WalletTransactionType;
-use App\Exceptions\InsufficientFundsException;
 use App\Models\Order;
 use App\Models\OrderEvent;
-use App\Models\WalletTransaction;
 use Illuminate\Support\Facades\DB;
 
 class PaymentService
 {
-    public const METHOD_WALLET = 'dream_wallet';
+    // Payment method is driven by the order currency: MYR → Touch 'n Go, CNY → Alipay.
+    public const METHOD_TNG = 'tng';
 
-    public const METHOD_ONLINE_BANKING = 'online_banking';
-
-    public const METHOD_EWALLET = 'ewallet';
+    public const METHOD_ALIPAY = 'alipay';
 
     public function __construct(private readonly PointsService $points) {}
+
+    /** The e-wallet method for an order's currency. */
+    public static function methodForCurrency(string $currency): string
+    {
+        return strtoupper($currency) === 'CNY' ? self::METHOD_ALIPAY : self::METHOD_TNG;
+    }
 
     /**
      * Pay for an order. Idempotent: a second call on an already-paid order is a
      * no-op. A clicked button is NEVER proof of payment — the state transition
-     * (and, for wallet, the balance debit) happens here, server-side, under a row lock.
+     * happens here, server-side, under a row lock.
+     *
+     * Touch 'n Go / Alipay are DEV-ONLY MOCKS in this build: no real gateway
+     * call. Money is considered received out-of-band.
      */
     public function pay(Order $order, string $method): Order
     {
@@ -37,27 +42,6 @@ class PaymentService
             if ($locked->status !== OrderStatus::Draft && $locked->status !== OrderStatus::AwaitingPayment) {
                 return $locked;
             }
-
-            if ($method === self::METHOD_WALLET) {
-                $balance = $locked->user->walletBalanceMinor();
-                if ($balance < $locked->amount_minor) {
-                    throw new InsufficientFundsException();
-                }
-
-                // Unique(order_id, type) guarantees at most one wallet payment per order.
-                WalletTransaction::create([
-                    'user_id' => $locked->user_id,
-                    'order_id' => $locked->id,
-                    'type' => WalletTransactionType::Payment,
-                    'method' => $method,
-                    'description' => $locked->service_name.' · Order '.$locked->order_code,
-                    'amount_minor' => -1 * $locked->amount_minor,
-                    'currency' => $locked->currency,
-                    'status' => 'completed',
-                ]);
-            }
-            // Online banking / e-wallet are DEV-ONLY MOCKS in this build: no real
-            // gateway call. Money is considered received out-of-band; wallet is untouched.
 
             $locked->update([
                 'status' => OrderStatus::AwaitingGuardian,

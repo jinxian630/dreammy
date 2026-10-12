@@ -3,7 +3,6 @@
 namespace App\Livewire\Shop;
 
 use App\Enums\OrderStatus;
-use App\Exceptions\InsufficientFundsException;
 use App\Models\Order;
 use App\Services\PaymentService;
 use Livewire\Attributes\Title;
@@ -14,7 +13,7 @@ class Checkout extends Component
 {
     public Order $order;
 
-    public string $paymentMethod = PaymentService::METHOD_WALLET;
+    public string $paymentMethod = PaymentService::METHOD_TNG;
 
     public string $coupon = '';
 
@@ -35,6 +34,8 @@ class Checkout extends Component
         }
 
         $this->order = $order;
+        // Payment method is fixed by the order currency (MYR → TNG, CNY → Alipay).
+        $this->paymentMethod = PaymentService::methodForCurrency($order->currency);
     }
 
     public function applyCoupon(): void
@@ -49,20 +50,17 @@ class Checkout extends Component
     {
         $this->authorize('pay', $this->order);
 
+        // Lock the method to the order currency — ignore any tampered client value.
+        $this->paymentMethod = PaymentService::methodForCurrency($this->order->currency);
+
         $this->validate([
             'agree' => 'accepted',
-            'paymentMethod' => 'required|in:dream_wallet,online_banking,ewallet',
+            'paymentMethod' => 'required|in:tng,alipay',
         ], [
             'agree.accepted' => 'Please agree to the Terms of Service to continue.',
         ]);
 
-        try {
-            $order = $payments->pay($this->order, $this->paymentMethod);
-        } catch (InsufficientFundsException $e) {
-            $this->addError('paymentMethod', $e->getMessage());
-
-            return null;
-        }
+        $order = $payments->pay($this->order, $this->paymentMethod);
 
         session()->flash('success', 'Payment successful — your order is on its way!');
 
@@ -71,14 +69,8 @@ class Checkout extends Component
 
     public function render()
     {
-        $walletMinor = auth()->user()->walletBalanceMinor();
-
         return view('livewire.shop.checkout', [
-            'walletMinor' => $walletMinor,
-            'remainingMinor' => $walletMinor - $this->order->amount_minor,
             'summary' => $this->order->configSummary(),
-            'insufficient' => $this->paymentMethod === PaymentService::METHOD_WALLET
-                && $walletMinor < $this->order->amount_minor,
         ]);
     }
 }

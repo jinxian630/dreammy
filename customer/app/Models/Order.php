@@ -113,6 +113,15 @@ class Order extends Model
             ];
         }
 
+        if (! empty($config['package'])) {
+            $rows[] = ['label' => 'Package', 'value' => (string) $config['package'], 'icon' => 'sparkle'];
+        }
+
+        $qty = (int) ($config['quantity'] ?? 1);
+        if ($qty > 1) {
+            $rows[] = ['label' => 'Quantity', 'value' => '× '.$qty, 'icon' => 'tag'];
+        }
+
         $rows[] = ['label' => 'Traveller (Contact)', 'value' => $this->contact_name ?: '—', 'icon' => 'profile'];
 
         $notes = trim((string) ($config['special_requests'] ?? ''));

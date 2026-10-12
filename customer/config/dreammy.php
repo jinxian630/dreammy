@@ -24,6 +24,13 @@ return [
         'code' => 'MYR',
         'symbol' => 'RM',
         'minor_per_major' => 100,
+        // Customer-selectable display currencies and their symbols. The chosen
+        // currency drives which service price is shown and the checkout payment
+        // method (MYR → Touch 'n Go, CNY → Alipay).
+        'symbols' => [
+            'MYR' => 'RM',
+            'CNY' => '¥',
+        ],
     ],
 
     /*
