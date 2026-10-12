@@ -278,7 +278,7 @@ export default function ServicesPage() {
                         <td className="py-3">
                           <Badge tone="blush">{t(`category.${s.category}` as TKey)}</Badge>
                         </td>
-                        <td className="py-3 font-medium text-ink">{formatMoney(s.priceMinor, s.currency, { decimals: false })}</td>
+                        <td className="py-3 font-medium text-ink">{formatMoney(s.priceMinor, s.currency)}</td>
                         <td className="py-3">
                           <ServiceBadge status={s.status} />
                         </td>
@@ -317,7 +317,7 @@ export default function ServicesPage() {
                           {t(`category.${s.category}` as TKey)}
                         </Badge>
                         <div className="mt-2 flex items-center justify-between">
-                          <span className="font-semibold text-ink">{formatMoney(s.priceMinor, s.currency, { decimals: false })}</span>
+                          <span className="font-semibold text-ink">{formatMoney(s.priceMinor, s.currency)}</span>
                           <span className="text-xs text-ink-muted">{t('sv.updatedPrefix')} {formatDate(s.updatedAt)}</span>
                         </div>
                         <div className="mt-2 flex gap-2">
